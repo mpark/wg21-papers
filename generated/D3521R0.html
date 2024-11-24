@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="generator" content="mpark/wg21" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
-  <meta name="dcterms.date" content="2024-11-23" />
+  <meta name="dcterms.date" content="2024-11-24" />
   <title>Pattern Matching: Customization Point for Open Sum
 Types</title>
   <style>
@@ -429,7 +429,7 @@ Customization Point for Open Sum Types</h1>
   </tr>
   <tr>
     <td>Date:</td>
-    <td>2024-11-23</td>
+    <td>2024-11-24</td>
   </tr>
   <tr>
     <td style="vertical-align:top">Project:</td>
@@ -456,7 +456,12 @@ Customization Point for Open Sum Types</h1>
 <ul>
 <li><a href="#introduction" id="toc-introduction"><span class="toc-section-number">1</span> Introduction<span></span></a></li>
 <li><a href="#motivation-and-scope" id="toc-motivation-and-scope"><span class="toc-section-number">2</span> Motivation and
-Scope<span></span></a></li>
+Scope<span></span></a>
+<ul>
+<li><a href="#sum-types" id="toc-sum-types"><span class="toc-section-number">2.1</span> Sum Types<span></span></a></li>
+<li><a href="#implications-for-pattern-matching" id="toc-implications-for-pattern-matching"><span class="toc-section-number">2.2</span> Implications for Pattern
+Matching<span></span></a></li>
+</ul></li>
 <li><a href="#design-overview" id="toc-design-overview"><span class="toc-section-number">3</span> Design Overview<span></span></a>
 <ul>
 <li><a href="#how-does-pattern-matching-actually-use-this" id="toc-how-does-pattern-matching-actually-use-this"><span class="toc-section-number">3.1</span> How does pattern matching actually
@@ -483,10 +488,10 @@ points in the library. At the Wrocław meeting in November 2024, the
 following poll was taken in EWG:</p>
 <blockquote>
 <p>Poll: <span class="citation" data-cites="P2688R3">[<a href="https://wg21.link/p2688r3" role="doc-biblioref">P2688R3</a>]</span> — Pattern Matching:
-<code class="sourceCode cpp"><span class="cf">match</span></code>
-Expression, we encourage more work on the language-only paper towards
-C++26 in the next meeting (note: voting against this poll does not
-exclude getting pattern matching in C++29)</p>
+<code class="sourceCode cpp">match</code> Expression, we encourage more
+work on the language-only paper towards C++26 in the next meeting (note:
+voting against this poll does not exclude getting pattern matching in
+C++29)</p>
 <p>Result: SF: 17, F: 16, N: 6, A: 1, SA: 9</p>
 </blockquote>
 <p>The “language-only paper” still relies on library facilities, the
@@ -502,12 +507,45 @@ that is currently missing: the ability for user-defined types to opt-in
 as an open sum type.</p>
 <p>This paper proposes to add that customization point.</p>
 <h1 data-number="2" id="motivation-and-scope"><span class="header-section-number">2</span> Motivation and Scope<a href="#motivation-and-scope" class="self-link"></a></h1>
+<h2 data-number="2.1" id="sum-types"><span class="header-section-number">2.1</span> Sum Types<a href="#sum-types" class="self-link"></a></h2>
+<p>First, definitions. A “sum type”
+<code class="sourceCode cpp">SUM</code> is a type that represents one of
+several types in the set <code class="sourceCode cpp">S</code> =
+{<code class="sourceCode cpp">T0</code>,
+<code class="sourceCode cpp">T1</code>, …
+<code class="sourceCode cpp">TN</code>}; which
+<code class="sourceCode cpp">Ti</code>
+<code class="sourceCode cpp">SUM</code> represents is a runtime
+property.</p>
+<p>The set of types <code class="sourceCode cpp">S</code> is part of the
+definition of <code class="sourceCode cpp">SUM</code>, but the exact
+elements of <code class="sourceCode cpp">S</code> might not be known at
+the time <code class="sourceCode cpp">SUM</code> is defined. For
+instance: for <code class="sourceCode cpp">std<span class="op">::</span>variant<span class="op">&lt;</span><span class="dt">int</span>, <span class="dt">double</span><span class="op">&gt;</span></code>,
+<code class="sourceCode cpp">S</code> = <code class="sourceCode cpp"><span class="op">{</span><span class="dt">int</span>, <span class="dt">double</span><span class="op">}</span></code>;
+however, for
+<code class="sourceCode cpp">std<span class="op">::</span>any</code>,
+<code class="sourceCode cpp">S</code> = <code class="sourceCode cpp"><span class="op">{</span>x <span class="op">|</span> x is a copyable C<span class="op">++</span> type<span class="op">}</span></code>.
+Though we know that
+<code class="sourceCode cpp">std<span class="op">::</span>any</code> can
+hold any copyable type, we don’t know all the copyable types that might
+exist in a program.</p>
+<p>If all the elements <code class="sourceCode cpp">S</code> are known
+at the time that <code class="sourceCode cpp">SUM</code> is defined, we
+say that <code class="sourceCode cpp">SUM</code> is a “closed” sum type
+(e.g. <code class="sourceCode cpp">std<span class="op">::</span>variant<span class="op">&lt;</span><span class="dt">int</span>, <span class="dt">double</span><span class="op">&gt;</span></code>).
+If the members of the set are <em>not</em> known at the time
+<code class="sourceCode cpp">SUM</code> is defined, we say that
+<code class="sourceCode cpp">SUM</code> is an “open” sum type
+(e.g. <code class="sourceCode cpp">std<span class="op">::</span>any</code>).</p>
+<h2 data-number="2.2" id="implications-for-pattern-matching"><span class="header-section-number">2.2</span> Implications for Pattern
+Matching<a href="#implications-for-pattern-matching" class="self-link"></a></h2>
 <p><span class="citation" data-cites="P2688R3">[<a href="https://wg21.link/p2688r3" role="doc-biblioref">P2688R3</a>]</span> proposes an alternative pattern
 which has syntax like the following:</p>
 <div class="sourceCode" id="cb1"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="dt">int</span> f<span class="op">(</span><span class="kw">const</span> std<span class="op">::</span>variant<span class="op">&lt;</span><span class="dt">int</span>, <span class="dt">double</span><span class="op">&gt;&amp;</span> v<span class="op">)</span> <span class="op">{</span></span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> v <span class="cf">match</span> <span class="op">{</span></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">int</span><span class="op">:</span> <span class="cf">let</span> i <span class="op">=&gt;</span> i;</span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">double</span><span class="op">:</span> <span class="cf">let</span> d <span class="op">=&gt;</span> <span class="dt">int</span><span class="op">(</span>d<span class="op">)</span>;</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> v match <span class="op">{</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">int</span><span class="op">:</span> let i <span class="op">=&gt;</span> i;</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">double</span><span class="op">:</span> let d <span class="op">=&gt;</span> <span class="dt">int</span><span class="op">(</span>d<span class="op">)</span>;</span>
 <span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>  <span class="op">}</span>;</span>
 <span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
 <p>This uses the “variant-like” protocol which uses the existing set of
@@ -548,9 +586,9 @@ are examples of such types.</p>
 <td><div>
 
 <div class="sourceCode" id="cb3"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="dt">int</span> f<span class="op">(</span><span class="kw">const</span> std<span class="op">::</span>any<span class="op">&amp;</span> a<span class="op">)</span> <span class="op">{</span></span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> a <span class="cf">match</span> <span class="op">-&gt;</span> <span class="dt">int</span> <span class="op">{</span></span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">int</span><span class="op">:</span> <span class="cf">let</span> i <span class="op">=&gt;</span> i;</span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">double</span><span class="op">:</span> <span class="cf">let</span> d <span class="op">=&gt;</span> d;</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> a match <span class="op">-&gt;</span> <span class="dt">int</span> <span class="op">{</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">int</span><span class="op">:</span> let i <span class="op">=&gt;</span> i;</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">double</span><span class="op">:</span> let d <span class="op">=&gt;</span> d;</span>
 <span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    _ <span class="op">=&gt;</span> <span class="op">-</span><span class="dv">1</span>;</span>
 <span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>  <span class="op">}</span>;</span>
 <span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
@@ -594,9 +632,9 @@ would look like with <span class="citation" data-cites="P2688R3">[<a href="https
 <td><div>
 
 <div class="sourceCode" id="cb5"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="dt">void</span> f<span class="op">(</span><span class="kw">const</span> std<span class="op">::</span>exception_ptr<span class="op">&amp;</span> eptr<span class="op">)</span> <span class="op">{</span></span>
-<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>  eptr <span class="cf">match</span> <span class="op">{</span></span>
-<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    logic_error<span class="op">:</span> <span class="cf">let</span> e <span class="op">=&gt;</span> <span class="co">// use `e`</span></span>
-<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    exception<span class="op">:</span> <span class="cf">let</span> e <span class="op">=&gt;</span> <span class="co">// use `e`</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>  eptr match <span class="op">{</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    logic_error<span class="op">:</span> let e <span class="op">=&gt;</span> <span class="co">// use `e`</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    exception<span class="op">:</span> let e <span class="op">=&gt;</span> <span class="co">// use `e`</span></span>
 <span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">nullptr</span> <span class="op">=&gt;</span> std<span class="op">::</span>print<span class="op">(</span><span class="st">&quot;no exception&quot;</span><span class="op">)</span>;</span>
 <span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    _ <span class="op">=&gt;</span> std<span class="op">::</span>print<span class="op">(</span><span class="st">&quot;some other exception&quot;</span><span class="op">)</span>;</span>
 <span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>  <span class="op">}</span>;</span>
@@ -662,7 +700,7 @@ overload without having to open the
 <h2 data-number="3.1" id="how-does-pattern-matching-actually-use-this"><span class="header-section-number">3.1</span> How does pattern matching
 actually use this?<a href="#how-does-pattern-matching-actually-use-this" class="self-link"></a></h2>
 <p>Given an example like:</p>
-<div class="sourceCode" id="cb8"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><em>subject</em> <span class="cf">match</span> <span class="op">{</span></span>
+<div class="sourceCode" id="cb8"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><em>subject</em> match <span class="op">{</span></span>
 <span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>  <em>type</em><span class="op">:</span> <em>subpattern</em> <span class="op">=&gt;</span> <span class="co">// ...;</span></span>
 <span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>  _ <span class="op">=&gt;</span> <span class="co">// ...;</span></span>
 <span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span>;</span></code></pre></div>
