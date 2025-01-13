@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" lang xml:lang>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="generator" content="mpark/wg21" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
-  <meta name="dcterms.date" content="2025-01-05" />
+  <meta name="dcterms.date" content="2025-01-13" />
   <title>Pattern Matching: *variant-like* and `std::expected`</title>
   <style>
       code{white-space: pre-wrap;}
@@ -424,11 +424,15 @@ code.sourceCode > span { display: inline; }
 <table style="border:none;float:right">
   <tr>
     <td>Document #:</td>
-    <td>D3527R1</td>
+    <td>
+      P3527R1
+      [<a href="https://wg21.link/P3527">Latest</a>]
+      [<a href="https://wg21.link/P3527/status">Status</a>]
+    </td>
   </tr>
   <tr>
     <td>Date:</td>
-    <td>2025-01-05</td>
+    <td>2025-01-13</td>
   </tr>
   <tr>
     <td style="vertical-align:top">Project:</td>
@@ -476,23 +480,23 @@ Experience<span></span></a></li>
 </ul>
 </div>
 <h1 data-number="1" id="motivation-and-scope"><span class="header-section-number">1</span> Motivation and Scope<a href="#motivation-and-scope" class="self-link"></a></h1>
-<p><span class="citation" data-cites="P2688R3">[<a href="https://wg21.link/p2688r3" role="doc-biblioref">P2688R3</a>]</span> introduces pattern matching for
-C++, including handling of
+<p><span class="citation" data-cites="P2688R3"><a href="https://wg21.link/p2688r3" role="doc-biblioref">[P2688R3]</a></span> introduces pattern matching
+for C++, including handling of
 <code class="sourceCode cpp">std<span class="op">::</span>variant</code>s.
 For example:</p>
 <div class="sourceCode" id="cb1"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">auto</span> v <span class="op">=</span> std<span class="op">::</span>variant<span class="op">&lt;</span><span class="dt">int32_t</span>, <span class="dt">int64_t</span>, <span class="dt">float</span>, <span class="dt">double</span><span class="op">&gt;{</span><span class="co">/* ... */</span><span class="op">}</span>;</span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>v match <span class="op">{</span></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">int32_t</span><span class="op">:</span> let i32 <span class="op">=&gt;</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>v <span class="cf">match</span> <span class="op">{</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">int32_t</span><span class="op">:</span> <span class="cf">let</span> i32 <span class="op">=&gt;</span></span>
 <span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    std<span class="op">::</span>print<span class="op">(</span><span class="st">&quot;got int32: {}&quot;</span>, i32<span class="op">)</span>;</span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>  <span class="dt">int64_t</span><span class="op">:</span> let i64 <span class="op">=&gt;</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>  <span class="dt">int64_t</span><span class="op">:</span> <span class="cf">let</span> i64 <span class="op">=&gt;</span></span>
 <span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    std<span class="op">::</span>print<span class="op">(</span><span class="st">&quot;got int64: {}&quot;</span>, i64<span class="op">)</span>;</span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>  <span class="dt">float</span><span class="op">:</span> let f <span class="op">=&gt;</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>  <span class="dt">float</span><span class="op">:</span> <span class="cf">let</span> f <span class="op">=&gt;</span></span>
 <span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    std<span class="op">::</span>print<span class="op">(</span><span class="st">&quot;got float: {}&quot;</span>, f<span class="op">)</span>;</span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>  <span class="dt">double</span><span class="op">:</span> let d <span class="op">=&gt;</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>  <span class="dt">double</span><span class="op">:</span> <span class="cf">let</span> d <span class="op">=&gt;</span></span>
 <span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    std<span class="op">::</span>print<span class="op">(</span><span class="st">&quot;got double: {}&quot;</span>, d<span class="op">)</span>;</span>
 <span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="op">}</span>;</span></code></pre></div>
 <p>However, there is an unsupported type in the standard that is
-variant-like but is not covered by <span class="citation" data-cites="P2688R3">[<a href="https://wg21.link/p2688r3" role="doc-biblioref">P2688R3</a>]</span> without explicit library
+variant-like but is not covered by <span class="citation" data-cites="P2688R3"><a href="https://wg21.link/p2688r3" role="doc-biblioref">[P2688R3]</a></span> without explicit library
 support. That type is <code class="sourceCode cpp">std<span class="op">::</span>expected</code>.</p>
 <p>This proposal does not interact with the pattern matching language
 feature, nor does it interact with user defined types; it only affects
@@ -505,7 +509,7 @@ is syntactically and semantically equivalent to the API used by pattern
 matching to match
 <code class="sourceCode cpp">std<span class="op">::</span>variant</code>s.</p>
 <h2 data-number="1.1" id="the-variant-protocol"><span class="header-section-number">1.1</span> The Variant Protocol<a href="#the-variant-protocol" class="self-link"></a></h2>
-<p>The language semantics for pattern matching (<span class="citation" data-cites="P2688R3">[<a href="https://wg21.link/p2688r3" role="doc-biblioref">P2688R3</a>]</span>) include the notion of a
+<p>The language semantics for pattern matching (<span class="citation" data-cites="P2688R3"><a href="https://wg21.link/p2688r3" role="doc-biblioref">[P2688R3]</a></span>) include the notion of a
 “variant protocol”. This is analogous to the tuple protocol used for
 structured bindings. The tuple protocol is used in defining the behavior
 of pattern matching as well.</p>
@@ -541,8 +545,9 @@ overloads of
 that work with <code class="sourceCode cpp">std<span class="op">::</span>expected</code>.</p></li>
 </ul>
 <p>By making these changes, <code class="sourceCode cpp">std<span class="op">::</span>expected</code> will
-be compatible with <code class="sourceCode cpp">match</code> expressions
-wherever
+be compatible with
+<code class="sourceCode cpp"><span class="cf">match</span></code>
+expressions wherever
 <code class="sourceCode cpp">std<span class="op">::</span>variant</code>
 is.</p>
 <h2 data-number="2.1" id="optional-additions"><span class="header-section-number">2.1</span> Optional additions<a href="#optional-additions" class="self-link"></a></h2>
@@ -619,50 +624,50 @@ value.</p>
 <div>
 <div class="sourceCode" id="cb2"><pre class="sourceCode diff"><code class="sourceCode diff"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="va">+ // [expected.helper], expected helper class specializations</span></span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="va">+ template&lt;class T, class E&gt;</span></span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="va">+   struct variant_size&lt;expected&lt;class T, class E&gt;&gt;;</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="va">+   struct variant_size&lt;expected&lt;T, E&gt;&gt;;</span></span>
 <span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="va">+ </span></span>
 <span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="va">+ template&lt;size_t I, class T, class E&gt;</span></span>
-<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="va">+   struct variant_alternative&lt;I, expected&lt;class T, class E&gt;&gt;;</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="va">+   struct variant_alternative&lt;I, expected&lt;T, E&gt;&gt;;</span></span>
 <span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="va">+ </span></span>
 <span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="va">+ // [expected.get], value access</span></span>
 <span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="va">+ template&lt;class U, class T, class E&gt;</span></span>
-<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr bool holds_alternative(const expected&lt;class T, class E&gt;&amp;) noexcept;</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr bool holds_alternative(const expected&lt;T, E&gt;&amp;) noexcept;</span></span>
 <span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="va">+ </span></span>
 <span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="va">+ template&lt;size_t I, class T, class E&gt;</span></span>
-<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr variant_alternative_t&lt;I, expected&lt;class T, class E&gt;&gt;&amp;</span></span>
-<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="va">+     get(expected&lt;class T, class E&gt;&amp;);                                          // freestanding-deleted</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr variant_alternative_t&lt;I, expected&lt;T, E&gt;&gt;&amp;</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="va">+     get(expected&lt;T, E&gt;&amp;);                                          // freestanding-deleted</span></span>
 <span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a><span class="va">+ template&lt;size_t I, class T, class E&gt;</span></span>
-<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr variant_alternative_t&lt;I, expected&lt;class T, class E&gt;&gt;&amp;&amp;</span></span>
-<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a><span class="va">+     get(expected&lt;class T, class E&gt;&amp;&amp;);                                         // freestanding-deleted</span></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr variant_alternative_t&lt;I, expected&lt;T, E&gt;&gt;&amp;&amp;</span></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a><span class="va">+     get(expected&lt;T, E&gt;&amp;&amp;);                                         // freestanding-deleted</span></span>
 <span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a><span class="va">+ template&lt;size_t I, class T, class E&gt;</span></span>
-<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr const variant_alternative_t&lt;I, expected&lt;class T, class E&gt;&gt;&amp;</span></span>
-<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a><span class="va">+     get(const expected&lt;class T, class E&gt;&amp;);                                    // freestanding-deleted</span></span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr const variant_alternative_t&lt;I, expected&lt;T, E&gt;&gt;&amp;</span></span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a><span class="va">+     get(const expected&lt;T, E&gt;&amp;);                                    // freestanding-deleted</span></span>
 <span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a><span class="va">+ template&lt;size_t I, class T, class E&gt;</span></span>
-<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr const variant_alternative_t&lt;I, expected&lt;class T, class E&gt;&gt;&amp;&amp;</span></span>
-<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a><span class="va">+     get(const expected&lt;class T, class E&gt;&amp;&amp;);                                   // freestanding-deleted</span></span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr const variant_alternative_t&lt;I, expected&lt;T, E&gt;&gt;&amp;&amp;</span></span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a><span class="va">+     get(const expected&lt;T, E&gt;&amp;&amp;);                                   // freestanding-deleted</span></span>
 <span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a><span class="va">+ </span></span>
 <span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a><span class="va">+ template&lt;class U, class T, class E&gt;</span></span>
-<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr T&amp; get(expected&lt;class T, class E&gt;&amp;);                               // freestanding-deleted</span></span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr T&amp; get(expected&lt;T, E&gt;&amp;);                               // freestanding-deleted</span></span>
 <span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a><span class="va">+ template&lt;class U, class T, class E&gt;</span></span>
-<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr T&amp;&amp; get(expected&lt;class T, class E&gt;&amp;&amp;);                             // freestanding-deleted</span></span>
+<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr T&amp;&amp; get(expected&lt;T, E&gt;&amp;&amp;);                             // freestanding-deleted</span></span>
 <span id="cb2-29"><a href="#cb2-29" aria-hidden="true" tabindex="-1"></a><span class="va">+ template&lt;class U, class T, class E&gt;</span></span>
-<span id="cb2-30"><a href="#cb2-30" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr const T&amp; get(const expected&lt;class T, class E&gt;&amp;);                   // freestanding-deleted</span></span>
+<span id="cb2-30"><a href="#cb2-30" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr const T&amp; get(const expected&lt;T, E&gt;&amp;);                   // freestanding-deleted</span></span>
 <span id="cb2-31"><a href="#cb2-31" aria-hidden="true" tabindex="-1"></a><span class="va">+ template&lt;class U, class T, class E&gt;</span></span>
-<span id="cb2-32"><a href="#cb2-32" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr const T&amp;&amp; get(const expected&lt;class T, class E&gt;&amp;&amp;);                 // freestanding-deleted</span></span>
+<span id="cb2-32"><a href="#cb2-32" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr const T&amp;&amp; get(const expected&lt;T, E&gt;&amp;&amp;);                 // freestanding-deleted</span></span>
 <span id="cb2-33"><a href="#cb2-33" aria-hidden="true" tabindex="-1"></a><span class="va">+ </span></span>
 <span id="cb2-34"><a href="#cb2-34" aria-hidden="true" tabindex="-1"></a><span class="va">+ template&lt;size_t I, class T, class E&gt;</span></span>
-<span id="cb2-35"><a href="#cb2-35" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr add_pointer_t&lt;variant_alternative_t&lt;I, expected&lt;class T, class E&gt;&gt;&gt;</span></span>
-<span id="cb2-36"><a href="#cb2-36" aria-hidden="true" tabindex="-1"></a><span class="va">+     get_if(expected&lt;class T, class E&gt;*) noexcept;</span></span>
+<span id="cb2-35"><a href="#cb2-35" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr add_pointer_t&lt;variant_alternative_t&lt;I, expected&lt;T, E&gt;&gt;&gt;</span></span>
+<span id="cb2-36"><a href="#cb2-36" aria-hidden="true" tabindex="-1"></a><span class="va">+     get_if(expected&lt;T, E&gt;*) noexcept;</span></span>
 <span id="cb2-37"><a href="#cb2-37" aria-hidden="true" tabindex="-1"></a><span class="va">+ template&lt;size_t I, class T, class E&gt;</span></span>
-<span id="cb2-38"><a href="#cb2-38" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr add_pointer_t&lt;const variant_alternative_t&lt;I, expected&lt;class T, class E&gt;&gt;&gt;</span></span>
-<span id="cb2-39"><a href="#cb2-39" aria-hidden="true" tabindex="-1"></a><span class="va">+     get_if(const expected&lt;class T, class E&gt;*) noexcept;</span></span>
+<span id="cb2-38"><a href="#cb2-38" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr add_pointer_t&lt;const variant_alternative_t&lt;I, expected&lt;T, E&gt;&gt;&gt;</span></span>
+<span id="cb2-39"><a href="#cb2-39" aria-hidden="true" tabindex="-1"></a><span class="va">+     get_if(const expected&lt;T, E&gt;*) noexcept;</span></span>
 <span id="cb2-40"><a href="#cb2-40" aria-hidden="true" tabindex="-1"></a><span class="va">+ </span></span>
 <span id="cb2-41"><a href="#cb2-41" aria-hidden="true" tabindex="-1"></a><span class="va">+ template&lt;class U, class T, class E&gt;</span></span>
 <span id="cb2-42"><a href="#cb2-42" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr add_pointer_t&lt;T&gt;</span></span>
-<span id="cb2-43"><a href="#cb2-43" aria-hidden="true" tabindex="-1"></a><span class="va">+     get_if(expected&lt;class T, class E&gt;*) noexcept;</span></span>
+<span id="cb2-43"><a href="#cb2-43" aria-hidden="true" tabindex="-1"></a><span class="va">+     get_if(expected&lt;T, E&gt;*) noexcept;</span></span>
 <span id="cb2-44"><a href="#cb2-44" aria-hidden="true" tabindex="-1"></a><span class="va">+ template&lt;class U, class T, class E&gt;</span></span>
 <span id="cb2-45"><a href="#cb2-45" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr add_pointer_t&lt;const T&gt;</span></span>
-<span id="cb2-46"><a href="#cb2-46" aria-hidden="true" tabindex="-1"></a><span class="va">+     get_if(const expected&lt;class T, class E&gt;*) noexcept;</span></span></code></pre></div>
+<span id="cb2-46"><a href="#cb2-46" aria-hidden="true" tabindex="-1"></a><span class="va">+     get_if(const expected&lt;T, E&gt;*) noexcept;</span></span></code></pre></div>
 </div>
 <p>Add a new member function <code class="sourceCode cpp">index</code>
 to <span>22.8.6.1
@@ -766,7 +771,7 @@ class specializations<a href="#expected.helpers-expected-helper-class-specializa
 <h3 class="unnumbered unlisted" id="expected.get-value-access">22.8.7.8+2 [expected.get] Value access<a href="#expected.get-value-access" class="self-link"></a></h3>
 <div>
 <div class="sourceCode" id="cb8"><pre class="sourceCode diff"><code class="sourceCode diff"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="va">+ template&lt;class U, class T, class E&gt;</span></span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr bool holds_alternative(const expected&lt;class T, class E&gt;&amp; e) noexcept;</span></span></code></pre></div>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr bool holds_alternative(const expected&lt;T, E&gt;&amp; e) noexcept;</span></span></code></pre></div>
 </div>
 <div class="add" style="color: #006e28">
 <p><span class="marginalizedparent"><a class="marginalized">1</a></span>
@@ -777,17 +782,17 @@ is <code class="sourceCode default">true</code>. Otherwise, returns
 </div>
 <div>
 <div class="sourceCode" id="cb9"><pre class="sourceCode diff"><code class="sourceCode diff"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="va">+ template&lt;size_t I, class T, class E&gt;</span></span>
-<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr variant_alternative_t&lt;I, expected&lt;class T, class E&gt;&gt;&amp;</span></span>
-<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="va">+     get(expected&lt;class T, class E&gt;&amp; e);                                          // freestanding-deleted</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr variant_alternative_t&lt;I, expected&lt;T, E&gt;&gt;&amp;</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="va">+     get(expected&lt;T, E&gt;&amp; e);                                          // freestanding-deleted</span></span>
 <span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="va">+ template&lt;size_t I, class T, class E&gt;</span></span>
-<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr variant_alternative_t&lt;I, expected&lt;class T, class E&gt;&gt;&amp;&amp;</span></span>
-<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a><span class="va">+     get(expected&lt;class T, class E&gt;&amp;&amp; e);                                         // freestanding-deleted</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr variant_alternative_t&lt;I, expected&lt;T, E&gt;&gt;&amp;&amp;</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a><span class="va">+     get(expected&lt;T, E&gt;&amp;&amp; e);                                         // freestanding-deleted</span></span>
 <span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a><span class="va">+ template&lt;size_t I, class T, class E&gt;</span></span>
-<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr const variant_alternative_t&lt;I, expected&lt;class T, class E&gt;&gt;&amp;</span></span>
-<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a><span class="va">+     get(const expected&lt;class T, class E&gt;&amp; e);                                    // freestanding-deleted</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr const variant_alternative_t&lt;I, expected&lt;T, E&gt;&gt;&amp;</span></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a><span class="va">+     get(const expected&lt;T, E&gt;&amp; e);                                    // freestanding-deleted</span></span>
 <span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a><span class="va">+ template&lt;size_t I, class T, class E&gt;</span></span>
-<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr const variant_alternative_t&lt;I, expected&lt;class T, class E&gt;&gt;&amp;&amp;</span></span>
-<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a><span class="va">+     get(const expected&lt;class T, class E&gt;&amp;&amp; e);                                   // freestanding-deleted</span></span></code></pre></div>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr const variant_alternative_t&lt;I, expected&lt;T, E&gt;&gt;&amp;&amp;</span></span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a><span class="va">+     get(const expected&lt;T, E&gt;&amp;&amp; e);                                   // freestanding-deleted</span></span></code></pre></div>
 </div>
 <div class="add" style="color: #006e28">
 <p><span class="marginalizedparent"><a class="marginalized">2</a></span>
@@ -804,13 +809,13 @@ is <code class="sourceCode default">true</code>. Otherwise, returns
 </div>
 <div>
 <div class="sourceCode" id="cb10"><pre class="sourceCode diff"><code class="sourceCode diff"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="va">+ template&lt;class U, class T, class E&gt;</span></span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr T&amp; get(expected&lt;class T, class E&gt;&amp; e);                               // freestanding-deleted</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr T&amp; get(expected&lt;T, E&gt;&amp; e);                               // freestanding-deleted</span></span>
 <span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="va">+ template&lt;class U, class T, class E&gt;</span></span>
-<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr T&amp;&amp; get(expected&lt;class T, class E&gt;&amp;&amp; e);                             // freestanding-deleted</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr T&amp;&amp; get(expected&lt;T, E&gt;&amp;&amp; e);                             // freestanding-deleted</span></span>
 <span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="va">+ template&lt;class U, class T, class E&gt;</span></span>
-<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr const T&amp; get(const expected&lt;class T, class E&gt;&amp; e);                   // freestanding-deleted</span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr const T&amp; get(const expected&lt;T, E&gt;&amp; e);                   // freestanding-deleted</span></span>
 <span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a><span class="va">+ template&lt;class U, class T, class E&gt;</span></span>
-<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr const T&amp;&amp; get(const expected&lt;class T, class E&gt;&amp;&amp; e);                 // freestanding-deleted</span></span></code></pre></div>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr const T&amp;&amp; get(const expected&lt;T, E&gt;&amp;&amp; e);                 // freestanding-deleted</span></span></code></pre></div>
 </div>
 <div class="add" style="color: #006e28">
 <p><span class="marginalizedparent"><a class="marginalized">5</a></span>
@@ -821,11 +826,11 @@ reference to that value. Otherwise, throws an exception of type
 </div>
 <div>
 <div class="sourceCode" id="cb11"><pre class="sourceCode diff"><code class="sourceCode diff"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="va">+ template&lt;size_t I, class T, class E&gt;</span></span>
-<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr add_pointer_t&lt;variant_alternative_t&lt;I, expected&lt;class T, class E&gt;&gt;&gt;</span></span>
-<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="va">+     get_if(expected&lt;class T, class E&gt;* e) noexcept;</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr add_pointer_t&lt;variant_alternative_t&lt;I, expected&lt;T, E&gt;&gt;&gt;</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="va">+     get_if(expected&lt;T, E&gt;* e) noexcept;</span></span>
 <span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a><span class="va">+ template&lt;size_t I, class T, class E&gt;</span></span>
-<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr add_pointer_t&lt;const variant_alternative_t&lt;I, expected&lt;class T, class E&gt;&gt;&gt;</span></span>
-<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a><span class="va">+     get_if(const expected&lt;class T, class E&gt;* e) noexcept;</span></span></code></pre></div>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr add_pointer_t&lt;const variant_alternative_t&lt;I, expected&lt;T, E&gt;&gt;&gt;</span></span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a><span class="va">+     get_if(const expected&lt;T, E&gt;* e) noexcept;</span></span></code></pre></div>
 </div>
 <div class="add" style="color: #006e28">
 <p><span class="marginalizedparent"><a class="marginalized">6</a></span>
@@ -839,10 +844,10 @@ returns <code class="sourceCode default">nullptr</code>.</p>
 <div>
 <div class="sourceCode" id="cb12"><pre class="sourceCode diff"><code class="sourceCode diff"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="va">+ template&lt;class U, class T, class E&gt;</span></span>
 <span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr add_pointer_t&lt;T&gt;</span></span>
-<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a><span class="va">+     get_if(expected&lt;class T, class E&gt;* e) noexcept;</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a><span class="va">+     get_if(expected&lt;T, E&gt;* e) noexcept;</span></span>
 <span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a><span class="va">+ template&lt;class U, class T, class E&gt;</span></span>
 <span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a><span class="va">+   constexpr add_pointer_t&lt;const T&gt;</span></span>
-<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a><span class="va">+     get_if(const expected&lt;class T, class E&gt;* e) noexcept;</span></span></code></pre></div>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a><span class="va">+     get_if(const expected&lt;T, E&gt;* e) noexcept;</span></span></code></pre></div>
 </div>
 <div class="add" style="color: #006e28">
 <p><span class="marginalizedparent"><a class="marginalized">8</a></span>
