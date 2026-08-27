@@ -1,0 +1,66 @@
+name: Deploy static content to Pages
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+      - name: Generate paper index
+        shell: bash
+        run: |
+          {
+            printf '%s\n' \
+              '<!doctype html>' \
+              '<html lang="en">' \
+              '  <head>' \
+              '    <meta charset="utf-8">' \
+              '    <meta name="viewport" content="width=device-width, initial-scale=1">' \
+              '    <title>WG21 Papers</title>' \
+              '  </head>' \
+              '  <body>' \
+              '    <h1>WG21 Papers</h1>' \
+              '    <ul>'
+
+            find generated -maxdepth 1 -type f \
+              \( -name '*.html' -o -name '*.pdf' \) \
+              ! -name index.html -printf '%f\n' \
+              | sort \
+              | while IFS= read -r file; do
+                  name=${file%.*}
+                  format=${file##*.}
+                  printf '      <li><a href="%s">%s</a> (%s)</li>\n' \
+                    "$file" "$name" "${format^^}"
+                done
+
+            printf '%s\n' \
+              '    </ul>' \
+              '  </body>' \
+              '</html>'
+          } > generated/index.html
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: generated
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
