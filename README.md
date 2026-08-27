@@ -5,8 +5,8 @@ This repository contains the source code for various proposals and the
 
 ## Active
 
-- [P3549R0][]: Diverging expressions - with Barry Revzin, Zach Laine, and Bruno Cardoso Lopes.
-- [P2806R5][]: `do` expressions - with Barry Revzin, Bruno Cardoso Lopez, and Zach Laine.
+- [P3549R0][]: Diverging expressions - with Bruno Cardoso Lopes, Zach Laine, and Barry Revzin.
+- [P2806R5][]: `do` expressions - with Bruno Cardoso Lopes, Zach Laine, and Barry Revzin.
 
 ## Accepted
 
