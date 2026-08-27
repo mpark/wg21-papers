@@ -25,42 +25,23 @@ jobs:
         uses: actions/checkout@v4
       - name: Setup Pages
         uses: actions/configure-pages@v5
-      - name: Generate paper index
-        shell: bash
+      - name: Stage Pages site
         run: |
-          {
-            printf '%s\n' \
-              '<!doctype html>' \
-              '<html lang="en">' \
-              '  <head>' \
-              '    <meta charset="utf-8">' \
-              '    <meta name="viewport" content="width=device-width, initial-scale=1">' \
-              '    <title>WG21 Papers</title>' \
-              '  </head>' \
-              '  <body>' \
-              '    <h1>WG21 Papers</h1>' \
-              '    <ul>'
-
-            find generated -maxdepth 1 -type f \
-              \( -name '*.html' -o -name '*.pdf' \) \
-              ! -name index.html -printf '%f\n' \
-              | sort \
-              | while IFS= read -r file; do
-                  name=${file%.*}
-                  format=${file##*.}
-                  printf '      <li><a href="%s">%s</a> (%s)</li>\n' \
-                    "$file" "$name" "${format^^}"
-                done
-
-            printf '%s\n' \
-              '    </ul>' \
-              '  </body>' \
-              '</html>'
-          } > generated/index.html
+          mkdir -p _pages
+          cp -a generated/. _pages/
+          sed -E \
+            -e '1i---\ntitle: C++ Committee Papers\n---\n' \
+            -e 's#^(\[[^]]+\]: )generated/#\1#' \
+            README.md > _pages/index.md
+      - name: Build with Jekyll
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: _pages
+          destination: _site
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: generated
+          path: _site
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
