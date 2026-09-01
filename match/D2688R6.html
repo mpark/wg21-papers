@@ -765,7 +765,7 @@ R6)</a></li>
 <li><a href="#constant-pattern" id="toc-constant-pattern"><span class="toc-section-number">5.2.4</span> Constant Pattern</a></li>
 <li><a href="#parenthesized-pattern-r5-removed-in-r6" id="toc-parenthesized-pattern-r5-removed-in-r6"><span class="toc-section-number">5.2.5</span> Parenthesized Pattern (R5;
 removed in R6)</a></li>
-<li><a href="#choice-projection-pattern-r6" id="toc-choice-projection-pattern-r6"><span class="toc-section-number">5.2.6</span> Choice Projection Pattern
+<li><a href="#alternative-pattern-r6" id="toc-alternative-pattern-r6"><span class="toc-section-number">5.2.6</span> Alternative Pattern
 (R6)</a></li>
 <li><a href="#optional-pattern-r5-removed-in-r6" id="toc-optional-pattern-r5-removed-in-r6"><span class="toc-section-number">5.2.7</span> Optional Pattern (R5; removed in
 R6)</a></li>
@@ -1048,8 +1048,8 @@ unguarded top-level wildcard can also be written
 <code class="sourceCode cpp"><span class="cf">default</span></code>.</p></li>
 <li><p>Declaration patterns replace
 <code class="sourceCode cpp"><span class="kw">let</span></code>
-bindings. A declaration with its identifier omitted is a type pattern
-and performs no initialization.</p></li>
+bindings. The identifier may be omitted, but the declaration is still
+initialized.</p></li>
 <li><p>Braces explicitly request choice projection:
 <code class="sourceCode cpp"><span class="op">{</span> P <span class="op">}</span></code>,
 <code class="sourceCode cpp"><span class="op">{</span> <span class="op">.</span>name<span class="op">:</span> P <span class="op">}</span></code>,
@@ -1250,7 +1250,7 @@ is limited.</p>
 </blockquote></li>
 </ul>
 <h1 data-number="1" id="introduction"><span class="header-section-number">1</span> Introduction<a href="#introduction" class="self-link"></a></h1>
-<p>This paper continues the evolution of a composable pattern matching
+<p>This paper continues the evolution of a composable pattern-matching
 facility for C++ centered on the
 <code class="sourceCode cpp"><span class="kw">match</span></code>
 expression. This revision preserves the expression-oriented and
@@ -1266,12 +1266,12 @@ However, it is not merely a retargeting of <span class="citation" data-cites="P2
 patterns are replaced by ordinary declaration syntax.</li>
 <li>Generalized alternative-matching syntax
 <code class="sourceCode cpp"><span class="op">{</span> <span class="op">...</span> <span class="op">}</span></code>
-handles values such as pointers,
+supports pointers,
 <code class="sourceCode cpp">std<span class="op">::</span>optional</code>,
 <code class="sourceCode cpp">std<span class="op">::</span>variant</code>,
 <code class="sourceCode cpp">std<span class="op">::</span>expected</code>,
 <code class="sourceCode cpp">std<span class="op">::</span>any</code>,
-polymorphic types.</li>
+and polymorphic types.</li>
 <li>Library and user-defined alternative types participate through a
 single customization point:
 <code class="sourceCode cpp">std<span class="op">::</span>alternative_traits</code>.</li>
@@ -1286,16 +1286,18 @@ errors.</li>
 <span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">...</span></span>
 <span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="op">};</span></span></code></pre></div>
 <p>Every pattern is applied to a subject. A nested pattern’s subject is
-supplied by its parent pattern. A declaration pattern initializes a
-declaration from its subject. A decomposition pattern decomposes its
-subject into components for its nested patterns, and an alternative
-pattern projects the matching alternative of its subject for its nested
-pattern.</p>
-<p>Using declarations as patterns allows the declaration to copy, move,
-refer to, or preserve the value category of its subject:</p>
+supplied by its enclosing pattern. A declaration pattern initializes a
+declaration from its subject. A decomposition pattern supplies
+components as subjects to nested patterns, while an alternative pattern
+selects an alternative and, when present, supplies its projection as the
+subject of a nested pattern.</p>
+<p>For an exactly matching subject, declaration syntax determines
+whether to create a new object or to initialize a reference (possibly a
+forwarding reference):</p>
 <div class="sourceCode" id="cb2"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="cf">case</span> Widget val</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="cf">case</span> <span class="kw">const</span> Widget<span class="op">&amp;</span> ref</span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="cf">case</span> <span class="kw">auto</span><span class="op">&amp;&amp;</span> fwd</span></code></pre></div>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="cf">case</span> Widget<span class="op">&amp;&amp;</span> rref</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="cf">case</span> <span class="kw">auto</span><span class="op">&amp;&amp;</span> fwd</span></code></pre></div>
 <p>A declaration pattern applies directly to its subject. An alternative
 pattern explicitly enters a runtime layer of an alternative type such as
 <code class="sourceCode cpp">std<span class="op">::</span>variant</code>:</p>
@@ -1358,9 +1360,8 @@ controlled statement is instead written:</p>
 <td><code class="sourceCode cpp"><span class="dt">int</span> value</code>,
 <code class="sourceCode cpp"><span class="kw">const</span> Widget<span class="op">&amp;</span></code>,
 <code class="sourceCode cpp"><span class="kw">auto</span> x</code></td>
-<td>Initializes an ordinary declaration from its subject, or tests
-whether that initialization would be valid when the identifier is
-omitted.</td>
+<td>Initializes an object or reference from an exactly matching subject;
+the identifier may be omitted.</td>
 </tr>
 <tr>
 <td>Decomposition</td>
@@ -2523,8 +2524,9 @@ declarator, no initializer, and no storage-class forms such as
 <p>Applicability is restricted to exact-match standard conversion
 sequences. Ordinary initialization then determines copying, moving,
 reference binding, constraints, accessibility, and destruction.</p>
-<p>The identifier can be omitted. The resulting type pattern checks the
-complete hypothetical initialization but does not perform it:</p>
+<p>The identifier can be omitted. The resulting type pattern performs
+the same initialization as the corresponding named declaration, but does
+not provide a name for the initialized entity:</p>
 <div class="sourceCode" id="cb64"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb64-1"><a href="#cb64-1" aria-hidden="true" tabindex="-1"></a><span class="cf">case</span> <span class="dt">int</span></span>
 <span id="cb64-2"><a href="#cb64-2" aria-hidden="true" tabindex="-1"></a><span class="cf">case</span> <span class="kw">const</span> Widget<span class="op">&amp;</span></span>
 <span id="cb64-3"><a href="#cb64-3" aria-hidden="true" tabindex="-1"></a><span class="cf">case</span> <span class="kw">auto</span><span class="op">&amp;&amp;</span></span>
@@ -2626,8 +2628,7 @@ expression patterns from declarations.<span> — <em>end note</em>
 <span id="cb69-6"><a href="#cb69-6" aria-hidden="true" tabindex="-1"></a>        _ <span class="op">=&gt;</span> <span class="co">// ...</span></span>
 <span id="cb69-7"><a href="#cb69-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">};</span></span>
 <span id="cb69-8"><a href="#cb69-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
-<h3 data-number="5.2.6" id="choice-projection-pattern-r6"><span class="header-section-number">5.2.6</span> Choice Projection Pattern
-(R6)<a href="#choice-projection-pattern-r6" class="self-link"></a></h3>
+<h3 data-number="5.2.6" id="alternative-pattern-r6"><span class="header-section-number">5.2.6</span> Alternative Pattern (R6)<a href="#alternative-pattern-r6" class="self-link"></a></h3>
 <blockquote>
 <div class="line-block"><code class="sourceCode cpp"><span class="op">{</span> <em>pattern</em> <span class="op">}</span></code><br />
 <code class="sourceCode cpp"><span class="op">{</span> <span class="op">.</span> <em>identifier</em> <span class="op">:</span> <em>pattern</em> <span class="op">}</span></code><br />
@@ -2695,9 +2696,9 @@ replaced in R6)<a href="#alternative-pattern-r5-replaced-in-r6" class="self-link
 <p><span>[ <em>Note:</em> </span>This subsection records the R5
 <code class="sourceCode cpp">T<span class="op">:</span> P</code> design
 and its <code class="sourceCode cpp">try_cast</code> protocol. R6 uses
-<a href="#choice-projection-pattern-r6">Choice Projection Pattern
-(R6)</a> and declaration patterns. A typed recursive selector remains
-under consideration as an additional pattern.<span> — <em>end note</em>
+<a href="#alternative-pattern-r6">Alternative Pattern (R6)</a> and
+declaration patterns. A typed recursive selector remains under
+consideration as an additional pattern.<span> — <em>end note</em>
 ]</span></p>
 </div>
 <blockquote>
@@ -3247,17 +3248,18 @@ the second call would turn an ownership error into different program
 behavior.</p>
 <h2 data-number="7.4" id="type-patterns"><span class="header-section-number">7.4</span> Type patterns<a href="#type-patterns" class="self-link"></a></h2>
 <p>A declaration pattern can omit its identifier. Such a type pattern
-has the viability semantics of the corresponding named declaration
-pattern:</p>
+has the same initialization semantics as the corresponding named
+declaration pattern:</p>
 <div class="sourceCode" id="cb97"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb97-1"><a href="#cb97-1" aria-hidden="true" tabindex="-1"></a><span class="cf">case</span> <span class="dt">int</span></span>
 <span id="cb97-2"><a href="#cb97-2" aria-hidden="true" tabindex="-1"></a><span class="cf">case</span> <span class="kw">const</span> Widget<span class="op">&amp;</span></span>
 <span id="cb97-3"><a href="#cb97-3" aria-hidden="true" tabindex="-1"></a><span class="cf">case</span> <span class="kw">auto</span><span class="op">&amp;&amp;</span></span>
 <span id="cb97-4"><a href="#cb97-4" aria-hidden="true" tabindex="-1"></a><span class="cf">case</span> std<span class="op">::</span>integral <span class="kw">auto</span></span>
 <span id="cb97-5"><a href="#cb97-5" aria-hidden="true" tabindex="-1"></a><span class="cf">case</span> <span class="op">[</span><span class="kw">auto</span><span class="op">&amp;&amp;,</span> <span class="kw">auto</span><span class="op">&amp;&amp;]</span></span></code></pre></div>
-<p>The hypothetical initialization is checked completely but not
-performed. No object is constructed or destroyed and no initialization
-side effects occur. Deleted or inaccessible constructors still make the
-pattern invalid.</p>
+<p>The initialization is performed even though its result cannot be
+named. An object initialized by the declaration has the same lifetime as
+one introduced by the corresponding named declaration, and
+initialization and destruction have the same side effects. Deleted or
+inaccessible constructors still make the pattern invalid.</p>
 <p><code class="sourceCode cpp"><span class="dt">void</span></code> and
 cv-<code class="sourceCode cpp"><span class="dt">void</span></code> are
 explicitly supported. This matters for dependent void-valued expressions

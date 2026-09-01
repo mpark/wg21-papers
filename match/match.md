@@ -37,8 +37,8 @@ highlighting:
   - Updated the examples in [Comparison Tables] with [@P2392R3] syntax.
   - Match cases require `case`; an unguarded top-level wildcard can also be
     written `default`.
-  - Declaration patterns replace `let` bindings. A declaration with its
-    identifier omitted is a type pattern and performs no initialization.
+  - Declaration patterns replace `let` bindings. The identifier may be
+    omitted, but the declaration is still initialized.
   - Braces explicitly request choice projection: `{ P }`, `{ .name: P }`, and
     `{}`. The same braces request built-in polymorphic refinement, so a bare
     declaration or type pattern remains purely static.
@@ -108,7 +108,7 @@ highlighting:
 
 # Introduction
 
-This paper continues the evolution of a composable pattern matching facility for
+This paper continues the evolution of a composable pattern-matching facility for
 C++ centered on the `match` expression. This revision preserves the
 expression-oriented and composable foundation of [@P2688R5], while revising
 how patterns introduce names and simplifying the set of patterns.
@@ -120,8 +120,8 @@ C++29. However, it is not merely a retargeting of [@P2688R5].
 The principal changes are:
 
   - `let` patterns are replaced by ordinary declaration syntax.
-  - Generalized alternative-matching syntax `{ ... }` handles values such as
-    pointers, `std::optional`, `std::variant`, `std::expected`, `std::any`,
+  - Generalized alternative-matching syntax `{ ... }` supports pointers,
+    `std::optional`, `std::variant`, `std::expected`, `std::any`, and
     polymorphic types.
   - Library and user-defined alternative types participate through a single
     customization point: `std::alternative_traits`.
@@ -139,10 +139,10 @@ The primary form is a selection expression:
 ```
 
 Every pattern is applied to a subject. A nested pattern's subject is supplied
-by its parent pattern. A declaration pattern initializes a declaration from
-its subject. A decomposition pattern decomposes its subject into components
-for its nested patterns, and an alternative pattern projects the matching
-alternative of its subject for its nested pattern.
+by its enclosing pattern. A declaration pattern initializes a declaration from
+its subject. A decomposition pattern supplies components as subjects to nested
+patterns, while an alternative pattern selects an alternative and, when
+present, supplies its projection as the subject of a nested pattern.
 
 For an exactly matching subject, declaration syntax determines whether to create
 a new object or to initialize a reference (possibly a forwarding reference):
@@ -194,7 +194,7 @@ R6 proposes five composable pattern forms:
 |---|---|---|
 | Wildcard | `_` | Matches and ignores its subject. |
 | Value | `42`, `"hello"`, `some_constant` | Compares an expression with its subject. |
-| Declaration or type | `int value`, `const Widget&`, `auto x` | Initializes an ordinary declaration from its subject, or tests whether that initialization would be valid when the identifier is omitted. |
+| Declaration or type | `int value`, `const Widget&`, `auto x` | Initializes an object or reference from an exactly matching subject; the identifier may be omitted. |
 | Decomposition | `[0, auto y]` | Decomposes its subject and applies nested patterns to its components. |
 | Alternative | `{ int value }`, `{ .error: Error& error }`, `{}` | Selects an advertised alternative and, when present, applies a nested pattern to its projection. |
 
@@ -1248,8 +1248,9 @@ Applicability is restricted to exact-match standard conversion sequences.
 Ordinary initialization then determines copying, moving, reference binding,
 constraints, accessibility, and destruction.
 
-The identifier can be omitted. The resulting type pattern checks the complete
-hypothetical initialization but does not perform it:
+The identifier can be omitted. The resulting type pattern performs the same
+initialization as the corresponding named declaration, but does not provide a
+name for the initialized entity:
 
 ```cpp
 case int
@@ -1358,7 +1359,7 @@ void f() {
 }
 ```
 
-### Choice Projection Pattern (R6)
+### Alternative Pattern (R6)
 
 > | `{ @*pattern*@ }`
 > | `{ . @*identifier*@ : @*pattern*@ }`
@@ -1413,7 +1414,7 @@ contextually converts to `true` and `*@*subject*@` matches `@*pattern*@`.
 
 ::: note
 This subsection records the R5 `T: P` design and its `try_cast` protocol. R6
-uses [Choice Projection Pattern (R6)] and declaration patterns. A typed
+uses [Alternative Pattern (R6)] and declaration patterns. A typed
 recursive selector remains under consideration as an additional pattern.
 :::
 
@@ -1968,7 +1969,7 @@ into different program behavior.
 ## Type patterns
 
 A declaration pattern can omit its identifier. Such a type pattern has the
-viability semantics of the corresponding named declaration pattern:
+same initialization semantics as the corresponding named declaration pattern:
 
 ```cpp
 case int
@@ -1978,9 +1979,11 @@ case std::integral auto
 case [auto&&, auto&&]
 ```
 
-The hypothetical initialization is checked completely but not performed. No
-object is constructed or destroyed and no initialization side effects occur.
-Deleted or inaccessible constructors still make the pattern invalid.
+The initialization is performed even though its result cannot be named. An
+object initialized by the declaration has the same lifetime as one introduced
+by the corresponding named declaration, and initialization and destruction
+have the same side effects. Deleted or inaccessible constructors still make
+the pattern invalid.
 
 `void` and cv-`void` are explicitly supported. This matters for dependent
 void-valued expressions and `expected<void, E>` projections.
