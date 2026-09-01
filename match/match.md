@@ -108,6 +108,16 @@ highlighting:
     > ---- --- --- --- ----
     >  34   9   0   0   0
 
+## R0 → R1 {- .unlisted}
+  - At the Kona meeting in November 2022, [@P2688R0] and [@P2392R2]
+    were discussed together, and the following poll was taken in EWG:
+
+    > Poll: "EWG prefers composition over chaining in pattern matching syntax."
+    >
+    >  SF    F   N   A   SA
+    > ----  --- --- --- ----
+    >  13    9   2   1   0
+
 # Introduction
 
 This paper continues the evolution of a composable pattern-matching facility for
@@ -208,76 +218,55 @@ papers such as [@P2392R3]{.title}, [@P3332R0]{.title}, and [@P3619R1]{.title}.
 
 # Motivation and Scope
 
-The goal and motivation of this paper is to make further progress on pattern
-matching for C++.
+C++ already provides many of the operations with which programmers manually
+assemble pattern matching. This is typically done by combining `switch` and
+`if` statements, structured-binding declarations, `std::visit` with overloaded
+lambdas or `if constexpr`, and chains of `dynamic_cast`.
 
-At the Kona meeting in November 2022, the previous version of this paper
-[@P2688R0] and [@P2392R2] was discussed over whether patterns should be
-composed vs chained. EWG clearly expressed the desire for patterns to
-be composable (i.e. nested patterns):
+Pattern matching offers a mechanism to compose these operations in a form that
+visually describes the shape of the value being matched. This reduces the
+scaffolding needed to tease values apart and keeps the operation being expressed
+at the center of the code.
 
-> Poll: "EWG prefers composition over chaining in pattern matching syntax."
->
->  SF    F   N   A   SA
-> ----  --- --- --- ----
->  13    9   2   1   0
+The driving motivations for the changes in this revision are:
 
-This paper presents (as did [@P1371R3]) a design that continues to offer
-composable patterns.
+  1. Make pattern matching feel natural in C++ by using ordinary expressions and
+     declarations instead of dedicated syntax such as `let` and `? @*pattern*@`.
+  2. Focus on a small, composable set of patterns supported by evidence from
+     real-world production C++.
+  3. Improve safety by requiring diagnostics for non-exhaustive selections and
+     redundant cases.
 
-At the EWG Telecon July 7, 2021, EWG clearly expressed the desire for
-pattern matching to be available outside of `inspect`:
+R6 also preserves the following established design decisions from earlier EWG
+discussions:
 
-> Poll: "Should we spend more time on patmat expressions outside of `inspect`
-> (as proposed in P2392 or otherwise), knowing that time is limited and
-> we already have put in a lot of effort towards another patmat proposal?"
->
->  SF    F   N   A   SA
-> ----  --- --- --- ----
->  11   12   4   2   0
+  - Patterns compose recursively rather than forming a chain of separate
+    matching operations. EWG expressed a preference for this direction at the
+    Kona meeting in November 2022.
+  - Pattern matching is available both in selection expressions and in ordinary
+    control-flow conditions. At the July 7, 2021 EWG teleconference, EWG
+    expressed support for matching outside a dedicated `inspect` construct.
+  - Expressions retain their ordinary meaning. Earlier EWG feedback
+    emphasized that declarations should visibly introduce names and that an
+    identifier should not silently declare or shadow a variable merely because
+    it appears in a pattern.
 
-This paper offers single-pattern matching via
-`@*expression*@ match case @*pattern*@`, which is similar in purpose to the
-`is`-expression from [@P2392R2].
+[@P2688R5] used `let` to make name introduction explicit. R6 retains that
+distinction between declarations and expressions while using ordinary
+declaration syntax to express type, ownership, references, and forwarding.
+A bare identifier remains an expression that refers to an existing name.
 
-Additionally, it aims to address the following pieces of feedback:
+R6 covers the `match` selection expression, a boolean-yielding single-pattern
+test, and pattern conditions. It specifies the five pattern forms described in
+the introduction and their composition over product types, nullable types,
+closed and open alternative types, and polymorphic types. It also specifies
+participation by user-defined alternative types through `alternative_traits`
+and the behavior of patterns with respect to templates, evaluation, lifetime,
+exhaustiveness, and usefulness.
 
-> "Declaration of new names should have an introducer like most other places in
-  the language."
-
-R5 answered this feedback with `let`. R6 instead uses C++ declaration syntax,
-so the declaration of a name, its type, and its ownership or reference behavior
-are visible together.
-
-> "We shouldn’t bifurcate expressions like this."
-
-That is, expressions are just expressions without needing anything everywhere
-else in the language. This is true in this design. That is, `x` by itself is an
-expression referring to an existing name like it does everywhere else.
-
-> "I don’t want the documentation of pattern matching to have to mention a caveat
-> that `x` is a new name and therefore shadows an existing variable."
-
-As mentioned above, `x` is an expression that refers to an existing variable.
-
-Another contribution of this paper is [Static and Dynamic Conditions], which aim
-to more clearly specify and discuss the framework of requirements for patterns.
-They determine how uses of patterns are checked and/or tested at compile-time
-and/or runtime, within template contexts and outside.
-
-Features such as predicates, extractors, structured bindings with designators,
-static type matching by type or concepts, and pattern combinators `and` and `or`
-are proposed to be deferred as future extensions.
-
-The following is a list of key goals of the paper:
-
-  - Introduce a unified `match` expression with declaration patterns.
-  - Make choice projection explicit rather than overloading declaration syntax.
-  - Trim down the set of patterns to focus on.
-  - Allow pattern matching in more places.
-  - Determine how patterns should be treated in templates.
-
-
+Predicates, extractors, range patterns, named-member decomposition, matching
+types themselves as subjects, pattern combinators such as `and` and `or`, and
+multiple-subject matching are deferred to future work.
 
 # Comparison Tables
 

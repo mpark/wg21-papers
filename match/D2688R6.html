@@ -1254,6 +1254,45 @@ is limited.</p>
 </table>
 </blockquote></li>
 </ul>
+<h2 class="unnumbered unlisted" id="r0-r1">R0 → R1<a href="#r0-r1" class="self-link"></a></h2>
+<ul>
+<li><p>At the Kona meeting in November 2022, <span class="citation" data-cites="P2688R0"><a href="https://wg21.link/p2688r0">[P2688R0]</a></span> and <span class="citation" data-cites="P2392R2"><a href="https://wg21.link/p2392r2">[P2392R2]</a></span> were discussed
+together, and the following poll was taken in EWG:</p>
+<blockquote>
+<p>Poll: “EWG prefers composition over chaining in pattern matching
+syntax.”</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;"><div style="text-align:center">
+<strong>SF</strong>
+</div></th>
+<th style="text-align: center;"><div style="text-align:center">
+<strong>F</strong>
+</div></th>
+<th style="text-align: center;"><div style="text-align:center">
+<strong>N</strong>
+</div></th>
+<th style="text-align: center;"><div style="text-align:center">
+<strong>A</strong>
+</div></th>
+<th style="text-align: center;"><div style="text-align:center">
+<strong>SA</strong>
+</div></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">13</td>
+<td style="text-align: center;">9</td>
+<td style="text-align: center;">2</td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">0</td>
+</tr>
+</tbody>
+</table>
+</blockquote></li>
+</ul>
 <h1 data-number="1" id="introduction"><span class="header-section-number">1</span> Introduction<a href="#introduction" class="self-link"></a></h1>
 <p>This paper continues the evolution of a composable pattern-matching
 facility for C++ centered on the
@@ -1392,139 +1431,68 @@ and as)</a></span></span>, <span class="title"><span class="citation" data-cites
 simpler notation for PM)</a></span></span>, and <span class="title"><span class="citation" data-cites="P3619R1"><a href="https://wg21.link/p3619r1">[P3619R1] (Counter-examples for
 P2688R5)</a></span></span>.</p>
 <h1 data-number="2" id="motivation-and-scope"><span class="header-section-number">2</span> Motivation and Scope<a href="#motivation-and-scope" class="self-link"></a></h1>
-<p>The goal and motivation of this paper is to make further progress on
-pattern matching for C++.</p>
-<p>At the Kona meeting in November 2022, the previous version of this
-paper <span class="citation" data-cites="P2688R0"><a href="https://wg21.link/p2688r0">[P2688R0]</a></span> and <span class="citation" data-cites="P2392R2"><a href="https://wg21.link/p2392r2">[P2392R2]</a></span> was discussed over
-whether patterns should be composed vs chained. EWG clearly expressed
-the desire for patterns to be composable (i.e. nested patterns):</p>
-<blockquote>
-<p>Poll: “EWG prefers composition over chaining in pattern matching
-syntax.”</p>
-<table>
-<thead>
-<tr>
-<th style="text-align: center;"><div style="text-align:center">
-<strong>SF</strong>
-</div></th>
-<th style="text-align: center;"><div style="text-align:center">
-<strong>F</strong>
-</div></th>
-<th style="text-align: center;"><div style="text-align:center">
-<strong>N</strong>
-</div></th>
-<th style="text-align: center;"><div style="text-align:center">
-<strong>A</strong>
-</div></th>
-<th style="text-align: center;"><div style="text-align:center">
-<strong>SA</strong>
-</div></th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align: center;">13</td>
-<td style="text-align: center;">9</td>
-<td style="text-align: center;">2</td>
-<td style="text-align: center;">1</td>
-<td style="text-align: center;">0</td>
-</tr>
-</tbody>
-</table>
-</blockquote>
-<p>This paper presents (as did <span class="citation" data-cites="P1371R3"><a href="https://wg21.link/p1371r3">[P1371R3]</a></span>) a design that
-continues to offer composable patterns.</p>
-<p>At the EWG Telecon July 7, 2021, EWG clearly expressed the desire for
-pattern matching to be available outside of
-<code class="sourceCode cpp"><span class="kw">inspect</span></code>:</p>
-<blockquote>
-<p>Poll: “Should we spend more time on patmat expressions outside of
-<code class="sourceCode cpp"><span class="kw">inspect</span></code> (as
-proposed in P2392 or otherwise), knowing that time is limited and we
-already have put in a lot of effort towards another patmat
-proposal?”</p>
-<table>
-<thead>
-<tr>
-<th style="text-align: center;"><div style="text-align:center">
-<strong>SF</strong>
-</div></th>
-<th style="text-align: center;"><div style="text-align:center">
-<strong>F</strong>
-</div></th>
-<th style="text-align: center;"><div style="text-align:center">
-<strong>N</strong>
-</div></th>
-<th style="text-align: center;"><div style="text-align:center">
-<strong>A</strong>
-</div></th>
-<th style="text-align: center;"><div style="text-align:center">
-<strong>SA</strong>
-</div></th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align: center;">11</td>
-<td style="text-align: center;">12</td>
-<td style="text-align: center;">4</td>
-<td style="text-align: center;">2</td>
-<td style="text-align: center;">0</td>
-</tr>
-</tbody>
-</table>
-</blockquote>
-<p>This paper offers single-pattern matching via
-<code class="sourceCode cpp"><em>expression</em> <span class="kw">match</span> <span class="cf">case</span> <em>pattern</em></code>,
-which is similar in purpose to the
-<code class="sourceCode cpp"><span class="kw">is</span></code>-expression
-from <span class="citation" data-cites="P2392R2"><a href="https://wg21.link/p2392r2">[P2392R2]</a></span>.</p>
-<p>Additionally, it aims to address the following pieces of
-feedback:</p>
-<blockquote>
-<p>“Declaration of new names should have an introducer like most other
-places in the language.”</p>
-</blockquote>
-<p>R5 answered this feedback with
-<code class="sourceCode cpp"><span class="kw">let</span></code>. R6
-instead uses C++ declaration syntax, so the declaration of a name, its
-type, and its ownership or reference behavior are visible together.</p>
-<blockquote>
-<p>“We shouldn’t bifurcate expressions like this.”</p>
-</blockquote>
-<p>That is, expressions are just expressions without needing anything
-everywhere else in the language. This is true in this design. That is,
-<code class="sourceCode cpp">x</code> by itself is an expression
-referring to an existing name like it does everywhere else.</p>
-<blockquote>
-<p>“I don’t want the documentation of pattern matching to have to
-mention a caveat that <code class="sourceCode cpp">x</code> is a new
-name and therefore shadows an existing variable.”</p>
-</blockquote>
-<p>As mentioned above, <code class="sourceCode cpp">x</code> is an
-expression that refers to an existing variable.</p>
-<p>Another contribution of this paper is <a href="#static-and-dynamic-conditions">Static and Dynamic Conditions</a>,
-which aim to more clearly specify and discuss the framework of
-requirements for patterns. They determine how uses of patterns are
-checked and/or tested at compile-time and/or runtime, within template
-contexts and outside.</p>
-<p>Features such as predicates, extractors, structured bindings with
-designators, static type matching by type or concepts, and pattern
-combinators
-<code class="sourceCode cpp"><span class="kw">and</span></code> and
-<code class="sourceCode cpp"><span class="kw">or</span></code> are
-proposed to be deferred as future extensions.</p>
-<p>The following is a list of key goals of the paper:</p>
+<p>C++ already provides many of the operations with which programmers
+manually assemble pattern matching. This is typically done by combining
+<code class="sourceCode cpp"><span class="cf">switch</span></code> and
+<code class="sourceCode cpp"><span class="cf">if</span></code>
+statements, structured-binding declarations,
+<code class="sourceCode cpp">std<span class="op">::</span>visit</code>
+with overloaded lambdas or
+<code class="sourceCode cpp"><span class="cf">if</span> <span class="kw">constexpr</span></code>,
+and chains of
+<code class="sourceCode cpp"><span class="kw">dynamic_cast</span></code>.</p>
+<p>Pattern matching offers a mechanism to compose these operations in a
+form that visually describes the shape of the value being matched. This
+reduces the scaffolding needed to tease values apart and keeps the
+operation being expressed at the center of the code.</p>
+<p>The driving motivations for the changes in this revision are:</p>
+<ol type="1">
+<li>Make pattern matching feel natural in C++ by using ordinary
+expressions and declarations instead of dedicated syntax such as
+<code class="sourceCode cpp"><span class="kw">let</span></code> and
+<code class="sourceCode cpp"><span class="op">?</span> <em>pattern</em></code>.</li>
+<li>Focus on a small, composable set of patterns supported by evidence
+from real-world production C++.</li>
+<li>Improve safety by requiring diagnostics for non-exhaustive
+selections and redundant cases.</li>
+</ol>
+<p>R6 also preserves the following established design decisions from
+earlier EWG discussions:</p>
 <ul>
-<li>Introduce a unified
-<code class="sourceCode cpp"><span class="kw">match</span></code>
-expression with declaration patterns.</li>
-<li>Make choice projection explicit rather than overloading declaration
-syntax.</li>
-<li>Trim down the set of patterns to focus on.</li>
-<li>Allow pattern matching in more places.</li>
-<li>Determine how patterns should be treated in templates.</li>
+<li>Patterns compose recursively rather than forming a chain of separate
+matching operations. EWG expressed a preference for this direction at
+the Kona meeting in November 2022.</li>
+<li>Pattern matching is available both in selection expressions and in
+ordinary control-flow conditions. At the July 7, 2021 EWG
+teleconference, EWG expressed support for matching outside a dedicated
+<code class="sourceCode cpp"><span class="kw">inspect</span></code>
+construct.</li>
+<li>Expressions retain their ordinary meaning. Earlier EWG feedback
+emphasized that declarations should visibly introduce names and that an
+identifier should not silently declare or shadow a variable merely
+because it appears in a pattern.</li>
 </ul>
+<p><span class="citation" data-cites="P2688R5"><a href="https://wg21.link/p2688r5">[P2688R5]</a></span> used
+<code class="sourceCode cpp"><span class="kw">let</span></code> to make
+name introduction explicit. R6 retains that distinction between
+declarations and expressions while using ordinary declaration syntax to
+express type, ownership, references, and forwarding. A bare identifier
+remains an expression that refers to an existing name.</p>
+<p>R6 covers the
+<code class="sourceCode cpp"><span class="kw">match</span></code>
+selection expression, a boolean-yielding single-pattern test, and
+pattern conditions. It specifies the five pattern forms described in the
+introduction and their composition over product types, nullable types,
+closed and open alternative types, and polymorphic types. It also
+specifies participation by user-defined alternative types through
+<code class="sourceCode cpp">alternative_traits</code> and the behavior
+of patterns with respect to templates, evaluation, lifetime,
+exhaustiveness, and usefulness.</p>
+<p>Predicates, extractors, range patterns, named-member decomposition,
+matching types themselves as subjects, pattern combinators such as
+<code class="sourceCode cpp"><span class="kw">and</span></code> and
+<code class="sourceCode cpp"><span class="kw">or</span></code>, and
+multiple-subject matching are deferred to future work.</p>
 <h1 data-number="3" id="comparison-tables"><span class="header-section-number">3</span> Comparison Tables<a href="#comparison-tables" class="self-link"></a></h1>
 <p>The following are 4-way comparison tables between C++23, <span class="citation" data-cites="P1371R3"><a href="https://wg21.link/p1371r3">[P1371R3]</a></span>, <span class="citation" data-cites="P2392R3"><a href="https://wg21.link/p2392r3">[P2392R3]</a></span>, and this
 paper.</p>
