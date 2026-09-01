@@ -260,13 +260,518 @@ R6 covers the `match` selection expression, single-pattern tests, and pattern
 conditions. It specifies the five pattern forms described in
 the introduction and their composition over product types, nullable types,
 closed and open alternative types, and polymorphic types. It also specifies
-participation by user-defined alternative types through `alternative_traits`
+participation by user-defined alternative types through `std::alternative_traits`
 and the behavior of patterns with respect to templates, evaluation, lifetime,
 exhaustiveness, and usefulness.
 
 Predicates, extractors, range patterns, named-member decomposition, matching
 types themselves as subjects, pattern combinators such as `and` and `or`, and
 multiple-subject matching are deferred to future work.
+
+# Examples from Real-World C++
+
+To evaluate the design against production code, we surveyed pinned revisions
+of [Chromium](https://github.com/chromium/chromium/tree/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5)
+and [LLVM](https://github.com/llvm/llvm-project/tree/52a463254a82be0bcd75f0b7cbfe4728e31c1b26).
+The Chromium corpus covered approximately 13.29 million lines in 72,503
+non-test source files; the LLVM corpus covered approximately 6.50 million lines
+in 12,366 non-test source files. The examples below are selected to illustrate
+distinct capabilities rather than every site that could be rewritten. The
+rewrites are illustrative and have not been submitted to the respective
+projects.
+
+## Basic examples
+
+Before considering larger source examples, the following small example
+isolates a recurring operation.
+
+### Nullable and result alternatives
+
+An optional value ordinarily requires a test followed by a projection:
+
+```cpp
+auto value = parseIntegerText(input);
+if (!value.has_value()) {
+  throw ParseError(fieldName, "expected an integer");
+}
+return std::move(*value);
+```
+
+The alternative pattern exposes both advertised states:
+
+```cpp
+return parseIntegerText(input) match -> string {
+  case { string value } => std::move(value);
+  case {} => throw ParseError(fieldName, "expected an integer");
+};
+```
+
+Expected-like types can expose named states:
+
+```cpp
+loadResources() match {
+  case { .value: auto&& resources }
+    => context.resources = std::move(resources);
+  case { .error: const string& error }
+    => return unexpected(format_error(error));
+};
+```
+
+`{}` denotes an advertised state with no projection. It is not a special
+spelling for `nullopt`.
+
+## Closed alternative dispatch
+
+Chromium commonly uses `absl::Overload` to construct a visitor with one lambda
+for each alternative. The survey found 284 such calls. WebNN's model editor
+uses six overloads to translate attribute values
+([source](https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/services/webnn/ort/model_editor.cc#L223-L270)):
+
+::: cmptable
+
+### Existing C++
+```cpp
+std::visit(absl::Overload{
+  [&](int64_t value) {
+    CHECK_STATUS(ort_api->CreateOpAttr(
+        name.c_str(), &value, 1, ORT_OP_ATTR_INT,
+        ScopedOrtOpAttr::Receiver(attribute).get()));
+  },
+  [&](float value) {
+    CHECK_STATUS(ort_api->CreateOpAttr(
+        name.c_str(), &value, 1, ORT_OP_ATTR_FLOAT,
+        ScopedOrtOpAttr::Receiver(attribute).get()));
+  },
+  [&](base::cstring_view value) {
+    CHECK_STATUS(ort_api->CreateOpAttr(
+        name.c_str(), value.data(), value.size(), ORT_OP_ATTR_STRING,
+        ScopedOrtOpAttr::Receiver(attribute).get()));
+  },
+  [&](base::span<const int64_t> value) { /* ... */ },
+  [&](base::span<const float> value) { /* ... */ },
+  [&](base::span<const char*> value) { /* ... */ },
+}, data);
+```
+
+### With pattern matching
+```cpp
+data match {
+  case { int64_t value } => do {
+    CHECK_STATUS(ort_api->CreateOpAttr(
+        name.c_str(), &value, 1, ORT_OP_ATTR_INT,
+        ScopedOrtOpAttr::Receiver(attribute).get()));
+  };
+  case { float value } => do {
+    CHECK_STATUS(ort_api->CreateOpAttr(
+        name.c_str(), &value, 1, ORT_OP_ATTR_FLOAT,
+        ScopedOrtOpAttr::Receiver(attribute).get()));
+  };
+  case { base::cstring_view value } => do {
+    CHECK_STATUS(ort_api->CreateOpAttr(
+        name.c_str(), value.data(), value.size(), ORT_OP_ATTR_STRING,
+        ScopedOrtOpAttr::Receiver(attribute).get()));
+  };
+  case { base::span<const int64_t> value } => /* ... */;
+  case { base::span<const float> value } => /* ... */;
+  case { base::span<const char*> value } => /* ... */;
+};
+```
+
+:::
+
+The handler bodies do not become shorter. The improvement is structural: the
+subject, selection, initialization, source order, and exhaustiveness are
+represented directly by the language rather than by a constructed overload
+set.
+
+A second common visitor form recovers the active type inside a generic lambda.
+LLVM serializes a closed artifact variant this way, dispatching through an
+`if constexpr` chain and using a final `static_assert` to enforce coverage
+([source](https://github.com/llvm/llvm-project/blob/52a463254a82be0bcd75f0b7cbfe4728e31c1b26/clang/lib/ScalableStaticAnalysis/Core/Serialization/JSONFormat/Artifact.cpp#L188-L208)):
+
+::: cmptable
+
+### Existing C++
+```cpp
+return std::visit(
+    [&](const auto& encoding) -> llvm::Error {
+      using T = std::decay_t<decltype(encoding)>;
+      if constexpr (std::is_same_v<T, TUSummaryEncoding>) {
+        return writeTUSummaryEncoding(encoding, path);
+      } else if constexpr (std::is_same_v<T, LUSummaryEncoding>) {
+        return writeLUSummaryEncoding(encoding, path);
+      } else if constexpr (std::is_same_v<T, StaticLibrary>) {
+        return writeStaticLibrary(encoding, path);
+      } else if constexpr (std::is_same_v<T, MultiArchStaticLibrary>) {
+        return writeMultiArchStaticLibrary(encoding, path);
+      } else {
+        static_assert(std::is_same_v<T, MultiArchSharedLibrary>);
+        return writeMultiArchSharedLibrary(encoding, path);
+      }
+    },
+    artifact);
+```
+
+### With pattern matching
+```cpp
+return artifact match -> llvm::Error {
+  case { const TUSummaryEncoding& encoding }
+    => writeTUSummaryEncoding(encoding, path);
+  case { const LUSummaryEncoding& encoding }
+    => writeLUSummaryEncoding(encoding, path);
+  case { const StaticLibrary& encoding }
+    => writeStaticLibrary(encoding, path);
+  case { const MultiArchStaticLibrary& encoding }
+    => writeMultiArchStaticLibrary(encoding, path);
+  case { const MultiArchSharedLibrary& encoding }
+    => writeMultiArchSharedLibrary(encoding, path);
+};
+```
+
+:::
+
+The alternative patterns perform selection, and their nested declaration
+patterns perform initialization directly. Required exhaustiveness replaces the
+manually maintained assertion in the visitor's final branch.
+
+## Value patterns within an alternative
+
+Chromium's `OverlayLayerId::ToString` uses a generic visitor, recovers the
+active type with `decltype`, and then performs a nested value switch
+([source](https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/ui/gfx/overlay_layer_id.cc#L71-L103)):
+
+::: cmptable
+
+### Existing C++
+```cpp
+std::visit(
+    [&](auto&& arg) {
+      using T = std::decay_t<decltype(arg)>;
+
+      if constexpr (std::is_same_v<T, VizInternalId>) {
+        switch (arg) {
+          case VizInternalId::kOsCompositorRoot:
+            out << "OsCompositorRoot";
+            break;
+          case VizInternalId::kDelegatedInkTrail:
+            out << "DelegatedInkTrail";
+            break;
+          case VizInternalId::kBackgroundColorLayer:
+            out << "kBackgroundColorLayer";
+            break;
+        }
+      }
+
+      if constexpr (std::is_same_v<
+                        T, std::array<uint8_t, sizeof(RenderPassId)>>) {
+        out << "RenderPass(" << base::U64FromNativeEndian(arg) << ")";
+      }
+
+      if constexpr (std::is_same_v<T, RendererLayer>) {
+        out << arg.layer_namespace_id.first << ":"
+            << arg.layer_namespace_id.second << ":" << arg.layer_id << "."
+            << arg.sqs_z_order;
+      }
+    },
+    impl_);
+```
+
+### With pattern matching
+```cpp
+impl_ match {
+  case { VizInternalId::kOsCompositorRoot } => out << "OsCompositorRoot";
+  case { VizInternalId::kDelegatedInkTrail } => out << "DelegatedInkTrail";
+  case { VizInternalId::kBackgroundColorLayer } =>
+    out << "kBackgroundColorLayer";
+  case { const std::array<uint8_t, sizeof(RenderPassId)>& bytes } =>
+    out << "RenderPass(" << base::U64FromNativeEndian(bytes) << ")";
+  case { const RendererLayer& layer } =>
+    out << layer.layer_namespace_id.first << ":"
+        << layer.layer_namespace_id.second << ":" << layer.layer_id << "."
+        << layer.sqs_z_order;
+};
+```
+
+:::
+
+Here value patterns distinguish values of one projected alternative, while
+declaration patterns initialize objects or references from the remaining
+alternatives. The selection no longer needs a visitor whose first operation is
+another dispatch.
+
+## One value pattern across alternatives
+
+The following example is representative of numeric telemetry stored in a
+closed alternative type:
+
+```cpp
+using MetricValue =
+    variant<int16_t, int32_t, int64_t, float, double>;
+
+return ranges::all_of(metrics, [](const auto& item) {
+  return std::visit(
+      [](auto value) { return value == 0; },
+      item.second);
+});
+```
+
+One value pattern can be applied to every projected alternative for which the
+comparison is viable:
+
+```cpp
+return ranges::all_of(metrics, [](const auto& item) {
+  return item.second match {
+    case { 0 } => true;
+    default => false;
+  };
+});
+```
+
+This is an important separation of concerns: the braces request projection,
+while the nested pattern independently describes what must match.
+
+## Named result alternatives
+
+Chromium uses `base::expected` extensively. Session construction tests each
+result, projects either its value or error, and may return from the enclosing
+function
+([source](https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/net/device_bound_sessions/session.cc#L204-L212)):
+
+::: cmptable
+
+### Existing C++
+```cpp
+for (const auto& cred : params.credentials) {
+  base::expected<CookieCraving, SessionError> craving = CookieCraving::Create(
+      params.fetcher_url, cred.name, cred.attributes, base::Time::Now());
+  if (craving.has_value()) {
+    session->cookie_cravings_.push_back(craving.value());
+  } else {
+    return base::unexpected(SessionError{std::move(craving.error())});
+  }
+}
+```
+
+### With pattern matching
+```cpp
+for (const auto& cred : params.credentials) {
+  base::expected<CookieCraving, SessionError> craving = CookieCraving::Create(
+      params.fetcher_url, cred.name, cred.attributes, base::Time::Now());
+  craving match {
+    case { .value: const CookieCraving& value } =>
+      session->cookie_cravings_.push_back(value);
+    case { .error: SessionError& error } =>
+      return base::unexpected(SessionError{std::move(error)});
+  };
+}
+```
+
+:::
+
+Named alternatives preserve the distinction between value and error even when
+their types are identical. The handler can also return directly from the
+enclosing function rather than from a visitor lambda.
+
+## Pattern conditions
+
+LLVM's object-size analysis first obtains an optional `APInt` and then asks
+whether that value can be represented as a `uint64_t`
+([source](https://github.com/llvm/llvm-project/blob/52a463254a82be0bcd75f0b7cbfe4728e31c1b26/llvm/lib/Analysis/MemoryBuiltins.cpp#L627-L632)):
+
+::: cmptable
+
+### Existing C++
+```cpp
+if (optional<APInt> size = getAllocSize(call, TLI)) {
+  if (optional<uint64_t> extended = size->tryZExtValue())
+    return TypeSize::getFixed(*extended);
+}
+```
+
+### With pattern matching
+```cpp
+if (case { const APInt& size } = getAllocSize(call, TLI) &&
+    case { uint64_t extended } = size.tryZExtValue())
+  return TypeSize::getFixed(extended);
+```
+
+:::
+
+The second computation depends on a name introduced by the first. Conjoined
+pattern conditions express that dependency without adding another level of
+control flow.
+
+## Product and value matching
+
+LLVM's X86 intrinsic upgrader contains a decision table over vector width,
+element width, and whether the element type is floating point
+([source](https://github.com/llvm/llvm-project/blob/52a463254a82be0bcd75f0b7cbfe4728e31c1b26/llvm/lib/IR/AutoUpgrade.cpp#L2434-L2478)):
+
+::: cmptable
+
+### Existing C++
+```cpp
+if (vectorWidth == 128 && elementWidth == 32 && isFloat)
+  intrinsic = Intrinsic::x86_avx512_vpermi2var_ps_128;
+else if (vectorWidth == 128 && elementWidth == 32 && !isFloat)
+  intrinsic = Intrinsic::x86_avx512_vpermi2var_d_128;
+else if (vectorWidth == 128 && elementWidth == 64 && isFloat)
+  intrinsic = Intrinsic::x86_avx512_vpermi2var_pd_128;
+else if (vectorWidth == 128 && elementWidth == 64 && !isFloat)
+  intrinsic = Intrinsic::x86_avx512_vpermi2var_q_128;
+// ... the remaining supported combinations ...
+else
+  llvm_unreachable("Unexpected intrinsic");
+```
+
+### With pattern matching
+```cpp
+tuple{vectorWidth, elementWidth, isFloat} match {
+  case [128, 32, true]
+    => intrinsic = Intrinsic::x86_avx512_vpermi2var_ps_128;
+  case [128, 32, false]
+    => intrinsic = Intrinsic::x86_avx512_vpermi2var_d_128;
+  case [128, 64, true]
+    => intrinsic = Intrinsic::x86_avx512_vpermi2var_pd_128;
+  case [128, 64, false]
+    => intrinsic = Intrinsic::x86_avx512_vpermi2var_q_128;
+  // ... the remaining supported combinations ...
+  default => llvm_unreachable("Unexpected intrinsic");
+};
+```
+
+:::
+
+The product pattern turns a nested Boolean decision into a table whose
+dimensions are visible in each case. Existing product types provide the subject
+without requiring a separate multiple-subject grammar.
+
+## Recursive composition and enclosing control flow
+
+Chromium's HLS parser handles a parse result, distinguishes a line-item
+alternative, applies further value tests, and may `break`, `continue`, or
+return from the enclosing parser
+([source](https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/media/formats/hls/media_playlist.cc#L120-L151)):
+
+::: cmptable
+
+### Existing C++
+```cpp
+while (true) {
+  auto item_result = GetNextLineItem(&src_iter);
+  if (!item_result.has_value()) {
+    auto error = std::move(item_result).error();
+    if (error.code() == ParseStatusCode::kReachedEOF)
+      break;
+    return std::move(error);
+  }
+
+  auto item = std::move(item_result).value();
+  if (auto* tag = std::get_if<TagItem>(&item)) {
+    if (!tag->GetName().has_value()) {
+      HandleUnknownTag(*tag);
+      continue;
+    }
+    // Dispatch on the tag kind and tag name.
+  }
+}
+```
+
+### With pattern matching
+```cpp
+while (true) {
+  GetNextLineItem(&src_iter) match {
+    case { .error: const auto& error }
+        if (error.code() == ParseStatusCode::kReachedEOF) => break;
+    case { .error: auto error } => return error;
+    case { .value: { TagItem: auto&& tag } }
+        if (!tag.GetName().has_value()) => do {
+      HandleUnknownTag(tag);
+      continue;
+    };
+    case { .value: { TagItem: auto&& tag } } => do {
+      // Dispatch on the tag kind and tag name.
+    };
+    default => ;
+  };
+}
+```
+
+:::
+
+The example is not merely a shorter spelling for an isolated test. Named
+result states, closed alternatives, guards, and enclosing control flow compose
+in one selection without nested visitors or status variables.
+
+## Open runtime refinement
+
+Chromium's Blink renderer uses its own `DynamicTo<T>` protocol instead of C++
+RTTI. CSS pseudo-class handling contains a five-way ordered refinement
+([source](https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/third_party/blink/renderer/core/css/selector_checker.cc#L2999-L3021)):
+
+::: cmptable
+
+### Existing C++
+```cpp
+if (auto* dialog = DynamicTo<HTMLDialogElement>(element)) {
+  return dialog->FastHasAttribute(html_names::kOpenAttr);
+} else if (auto* details = DynamicTo<HTMLDetailsElement>(element)) {
+  return details->FastHasAttribute(html_names::kOpenAttr);
+} else if (auto* select = DynamicTo<HTMLSelectElement>(element)) {
+  return select->PopupIsVisible();
+} else if (auto* input = DynamicTo<HTMLInputElement>(element)) {
+  return input->IsPickerVisible();
+} else if (auto* menuitem = DynamicTo<HTMLMenuItemElement>(element)) {
+  return menuitem->IsSubmenuOpen();
+}
+return false;
+```
+
+### With pattern matching
+```cpp
+return element match {
+  case { HTMLDialogElement: auto& dialog } =>
+    dialog.FastHasAttribute(html_names::kOpenAttr);
+  case { HTMLDetailsElement: auto& details } =>
+    details.FastHasAttribute(html_names::kOpenAttr);
+  case { HTMLSelectElement: auto& select } => select.PopupIsVisible();
+  case { HTMLInputElement: auto& input } => input.IsPickerVisible();
+  case { HTMLMenuItemElement: auto& menuitem } => menuitem.IsSubmenuOpen();
+  default => false;
+};
+```
+
+:::
+
+The survey found 4,313 `DynamicTo` calls and 1,493 `IsA` calls, but no
+executable C++ `dynamic_cast` expressions. Supporting open refinement therefore
+requires an explicit customization path rather than special treatment only for
+C++ RTTI.
+
+## Where `match` is not automatically clearer
+
+Not every existing dispatch benefits materially. Chromium contains 99 visitors
+that apply one generic operation to every alternative. For example, its paint
+iterator already expresses one such operation concisely
+([source](https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/cc/paint/paint_op_buffer_iterator.h#L174-L204)):
+
+```cpp
+const PaintOp* get() const {
+  return std::visit([](const auto& iter) { return iter.get(); }, iter_);
+}
+```
+
+The corresponding `match` is comparable rather than clearly better:
+
+```cpp
+const PaintOp* get() const {
+  return iter_ match { case { const auto& iter } => iter.get(); };
+}
+```
+
+The strongest gains occur where existing C++ separates testing, projection,
+initialization, and control flow across several constructs, not where a visitor
+already applies one uniform operation.
 
 # Comparison Tables
 
