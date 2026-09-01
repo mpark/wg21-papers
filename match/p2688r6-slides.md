@@ -736,14 +736,17 @@ struct alternative_traits<MyChoice> {
   static constexpr bool is_exhaustive = true;
 
   template<size_t I>
-  using projection_type = /* ... */;
+  using type = /* declared alternative type */;
 
   static size_t index(const MyChoice&);
 
   template<size_t I, class Self>
   static decltype(auto) get(Self&&);
 
-  struct names { enum { value, error }; };
+  struct names {
+    static constexpr alternative_name<alternative_traits> value = 0;
+    static constexpr alternative_name<alternative_traits> error = 1;
+  };
 };
 ```
 :::
@@ -754,20 +757,17 @@ Open, type-indexed choice
 ```cpp
 template<>
 struct alternative_traits<std::any> {
-  // null means an empty state exists
-  static const std::type_info*
-    type(const std::any&) noexcept;
-
   template<class T, class Self>
-  static T get(Self&& self) {
-    return std::any_cast<T>(FWD(self));
-  }
+  static T* try_cast(Self&& self) noexcept;
+
+  // Optional; enables {}.
+  static bool has_value(const std::any&) noexcept;
 };
 ```
 :::
 ::::
 
-A reference-returning open `type()` describes a choice with no empty state.
+Without `has_value`, an open choice has no separately matchable empty state.
 
 # Current protocol models
 
@@ -886,6 +886,7 @@ needs to specify which protocol and decomposition operations may be reused.
 | `let x` | `auto&& x`, `T x`, ... | Familiar C++ declaration vocabulary |
 | `T: let x` | `{ T x }` | Make choice projection visible |
 | `T: P` | `{ T: P }` | Retain recursive selection inside the projection boundary |
+| `C: P` | `{ C: P }` | Constrain the declared alternative `type<I>` |
 | `? let x` | `{ auto&& x }` | One projection model |
 | empty optional via `_` | `{}` | Name the non-projectable state |
 | direct `any` cast pattern | `{ T x }` | Type erasure is an explicit open choice |
@@ -903,7 +904,7 @@ The Clang/libc++ prototype now includes:
 - Declaration and type patterns
 - Braced polymorphic runtime refinement
 - Braced, named, and empty projection patterns
-- Typed recursive and positional projection selectors
+- Typed, constrained, and positional projection selectors
 - Closed and open `alternative_traits`
 - Pointer, `optional`, `expected`, `variant`, and `any` models
 - Subject-once evaluation and compatible projection reuse

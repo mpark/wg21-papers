@@ -139,8 +139,8 @@ The revision-history section should lead with these changes.
   case std::integral auto value
   ```
 
-- A type pattern has the viability semantics of a declaration pattern with its
-  identifier omitted, but does not actually initialize an object:
+- A type pattern is a declaration pattern with its identifier omitted. It
+  performs the same initialization as the corresponding named declaration:
 
   ```cpp
   case int
@@ -788,21 +788,19 @@ pair match {
 };
 ```
 
-The corresponding declaration initialization is checked completely but is not
-performed. Thus `case Widget` requires the hypothetical initialization of a
-`Widget` declaration from the current subject to be well-formed and to satisfy
-the declaration-pattern exact-match rule. Deleted or inaccessible
-constructors, invalid reference binding, inaccessible destruction, and other
-declaration constraints still make the pattern invalid. No object is created,
-no copy or move occurs, and no initialization or destruction side effects are
-observable. Runtime refinement, when needed, is still evaluated to determine
-whether the type pattern matches.
+The corresponding declaration initialization is performed. Thus `case Widget`
+initializes and destroys an unnamed `Widget` exactly where `case Widget value`
+would initialize and destroy `value`; copies, moves, and other side effects are
+observable. `case Widget&` or `case auto&&` avoids creating a new object.
+Deleted or inaccessible constructors, invalid reference binding, inaccessible
+destruction, and other declaration constraints make the pattern invalid.
+`void` remains the special type pattern for which no object is initialized.
 
-The prototype performs this complete hypothetical declaration check. In
-particular, a non-copyable lvalue is rejected by `case Widget` even though no
-runtime `Widget` object would be created by the type pattern.
+The `T` in `{ T: P }` is a selector rather than a second unnamed declaration.
+It chooses or refines the projected subject, while `P` determines whether that
+subject is copied, moved, or bound by reference.
 
-### Omitted identifiers and bare type-constraints
+### Omitted identifiers and type-constraint selectors
 
 Type patterns suggest generalizing declaration patterns to permit an omitted
 identifier, including for constrained placeholder declarations:
@@ -819,19 +817,13 @@ is applied. `std::integral auto` tests the by-value deduced type. By contrast,
 which is significant because `viewable_range` intentionally distinguishes
 lvalue ranges, movable rvalue ranges, and views.
 
-This makes a bare type-constraint such as `case std::integral` semantically
-ambiguous. Treating it as an implicit `std::integral auto` favors concepts over
-value types; treating it as an implicit `std::integral auto&&` favors concepts
-designed for forwarding types. Applying it directly to `decltype((subject))`
-would be a third rule and would make ordinary lvalue integers fail
-`std::integral`. A concept declaration carries no metadata that identifies the
-intended normalization.
-
-The conservative R6 direction is therefore to support omitted identifiers in
-constrained placeholder declaration patterns while reserving bare
-type-constraints. If bare constraints are added, the paper must specify their
-type transformation explicitly rather than presenting them as an obvious
-consequence of the type-pattern grammar.
+A bare type-constraint remains unsuitable as a general declaration pattern:
+there is no principled choice between implicit `auto`, implicit `auto&&`, and
+`decltype((subject))`. It is instead supported in the explicitly typed choice
+selector `{ C: P }`. The constraint is applied directly to the declared
+alternative type `alternative_traits<S>::type<I>`, without an inferred
+placeholder. The child `P` independently controls projection binding and
+cv/ref behavior.
 
 ### Applicability is not initialization failure
 
@@ -1335,6 +1327,10 @@ struct alternative_traits<choice> {
   // Optional; defaults to true.
   static constexpr bool is_exhaustive = true;
 
+  template<size_t I>
+    requires /* state I is projectable */
+  using type = /* declared alternative type */;
+
   static constexpr size_t index(choice const&);
 
   template<size_t I, class Self>
@@ -1352,9 +1348,10 @@ struct alternative_traits<choice> {
 The paper needs to specify these laws:
 
 - `size` advertises `[0, size)`.
-- State `I` is projectable for a particular subject when
-  `Provider::get<I>(subject)` is well-formed. A valid `void` result is a void
-  projection; absence of a viable `get<I>` makes the state non-projectable.
+- `type<I>` names the declared alternative type. It is omitted for a
+  non-projectable state and can validly name `void`.
+- State `I` is projectable for a particular subject when both `type<I>` and
+  `Provider::get<I>(subject)` are well-formed.
 - `index(subject)` identifies the active state. Its result need not be
   `size_t`: a two-state provider can return `bool`, while larger providers
   normally return an unsigned index type.
@@ -1385,14 +1382,14 @@ struct alternative_name {
 };
 ```
 
-For `{ .name: P }`, the descriptor's `Provider` supplies `index`,
-and `get<State>`. Named providers may be mixed operationally: each provider's
-discriminator is evaluated and cached independently while subject storage is
-shared. Usefulness and exhaustiveness are conservative across providers. A
-single provider can prove complete coverage, and once preceding arms fully
-cover any provider, every later arm is redundant. Partial overlap between
-distinct providers is not inferred, so a partially overlapping arm is treated
-as maybe useful. A whole-subject wildcard remains provider-neutral.
+For `{ .name: P }`, the descriptor's `Provider` supplies `type<State>`,
+`index`, and `get<State>`. Named providers may be mixed operationally: each
+provider's discriminator is evaluated and cached independently while subject
+storage is shared. Usefulness and exhaustiveness are conservative across
+providers. A single provider can prove complete coverage, and once preceding
+arms fully cover any provider, every later arm is redundant. Partial overlap
+between distinct providers is not inferred, so a partially overlapping arm is
+treated as maybe useful. A whole-subject wildcard remains provider-neutral.
 
 This permits `expected<T, E>` to offer either `value/error` or `some/none`
 without requiring a canonical mapping between the two partitions:
@@ -1456,6 +1453,10 @@ struct alternative_traits<T*> {
   static constexpr size_t size = 2;
   static constexpr bool is_exhaustive = true;
 
+  template<size_t I>
+    requires (I == 1 && !is_void_v<T>)
+  using type = T;
+
   // Templated because this provider is reused with other nullable subjects.
   static constexpr bool index(auto const& self) noexcept {
     return self ? true : false;
@@ -1498,6 +1499,10 @@ struct alternative_traits<expected<T, E>> {
   static constexpr size_t size = 2;
   static constexpr bool is_exhaustive = true;
 
+  template<size_t I>
+    requires (I < size)
+  using type = conditional_t<I == 0, T, E>;
+
   struct names : alternative_traits<T*>::names {
     static constexpr alternative_name<AT> value = 0, error = 1;
   };
@@ -1524,6 +1529,9 @@ template<class... Types>
 struct alternative_traits<variant<Types...>> {
   static constexpr size_t size = sizeof...(Types);
   static constexpr bool is_exhaustive = false;
+
+  template<size_t I>
+  using type = Types...[I];
 
   static constexpr size_t index(variant<Types...> const& value) noexcept {
     return value.index();
@@ -3388,11 +3396,10 @@ before the prototype is described as complete.
   current pattern kind, guards, statement handlers, and both single-pattern
   spellings. Tests cover named, generic, and empty projections, packs,
   declaration and type patterns, and `match constexpr`.
-- **Type patterns skipped hypothetical declaration checking.** A
-  type pattern now performs the complete declaration-initialization validity
-  check, including deleted constructors and reference binding, without
-  creating an object or emitting copy, move, destruction, or other runtime
-  effects.
+- **Type patterns skipped declaration initialization.** A type pattern now
+  performs the same initialization as the corresponding declaration pattern,
+  including copy or move construction, destruction, and their runtime effects.
+  Reference type patterns provide the non-owning form.
 - **A failed generic projection over one advertised state could
   disappear silently.** Every generic projection now records and specializes
   its candidate set, including singleton sets. A singleton therefore uses the
@@ -3743,8 +3750,8 @@ valid opaque AST. They must not silently erase syntax or crash.
 3. [ ] Validate protocol `size` before iteration and add hostile-specialization
    tests.
 4. [x] Implement AST printing and add round-trip-oriented tests.
-5. [x] Make type patterns perform the complete hypothetical declaration
-   initialization check without emitting initialization or destruction.
+5. [x] Make type patterns perform the same initialization and destruction as
+   the corresponding declaration with an omitted identifier.
 6. [x] Diagnose a generic projected arm with no viable state consistently when a
    closed choice has only one advertised state.
 7. [x] Implement `match constexpr` with discarded-handler semantics, or remove it
@@ -3966,7 +3973,7 @@ struct alternative_traits<optional<_Tp>> {
 
   template <size_t _Ip>
     requires(_Ip == 1)
-  using projection_type = _Tp;
+  using type = _Tp;
 
   static constexpr size_t index(const optional<_Tp>& __value) noexcept {
     return __value.has_value() ? 1 : 0;
@@ -3988,7 +3995,7 @@ struct alternative_traits<variant<_Types...>> {
   static constexpr bool is_exhaustive = true;
 
   template <size_t _Ip>
-  using projection_type = _Types...[_Ip];
+  using type = _Types...[_Ip];
 
   static constexpr size_t index(const variant<_Types...>& __value) noexcept {
     return __value.index();
@@ -4178,7 +4185,7 @@ struct alternative_traits<expected<_Tp, _Ep>> {
   };
 
   template <size_t _Ip>
-  using projection_type = conditional_t<_Ip == names::value, _Tp, _Ep>;
+  using type = conditional_t<_Ip == names::value, _Tp, _Ep>;
 
   static constexpr size_t index(const expected<_Tp, _Ep>& __value) noexcept {
     return __value.has_value() ? names::value : names::error;

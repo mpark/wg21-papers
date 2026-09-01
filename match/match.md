@@ -17,7 +17,7 @@ highlighting:
 
 ## R5 → R6 {- .unlisted}
   - Prior to the Hagenberg meeting in January 2025, further implementation
-    was completed.
+    work was completed.
     - Runtime code generation was fully implemented by Bruno Cardoso Lopes.
     - Handling of `match` expressions in dependent contexts
     - Parsing of `@*type-constraint*@: @*pattern*@` syntax
@@ -40,9 +40,10 @@ highlighting:
   - Declaration patterns replace `let` bindings. The identifier may be
     omitted, but the declaration is still initialized.
   - Braces explicitly request choice projection: `{ P }`, `{ T: P }`,
-    `{ index: P }`, `{ .name: P }`, and `{}`. The same braces request built-in
-    polymorphic refinement, so a bare declaration or type pattern remains
-    purely static.
+    `{ C: P }`, `{ index: P }`, `{ .name: P }`, and `{}`. Here `C` is a
+    type-constraint applied to the declared alternative type. The same braces
+    request built-in polymorphic refinement, so a bare declaration or type
+    pattern remains purely static.
   - The R5 optional and parenthesized patterns are removed. Its unbraced
     `T: P` selector is replaced by the explicit braced form `{ T: P }`.
   - A single-pattern test is written `subject match case P`.
@@ -67,7 +68,7 @@ highlighting:
   - Further progress on [Proposed Wording].
   - At the Wrocław meeting in November 2024, the following poll was taken in EWG:
 
-    > Poll: [@P2688R3] — Pattern Matching: `match` Expression, we encourage more work
+    > Poll: [@P2688R3] - Pattern Matching: `match` Expression, we encourage more work
     > on the language-only paper towards C++26 in the next meeting (note: voting
     > against this poll does not exclude getting pattern matching in C++29)
     >
@@ -121,13 +122,12 @@ C++29. However, it is not merely a retargeting of [@P2688R5].
 The principal changes are:
 
   - `let` patterns are replaced by ordinary declaration syntax.
-  - Generalized alternative-matching syntax `{ ... }` supports pointers,
-    `std::optional`, `std::variant`, `std::expected`, `std::any`, and
-    polymorphic types.
-  - Library and user-defined alternative types participate through a single
-    customization point: `std::alternative_traits`.
+  - Generalized alternative-matching syntax `{ ... }` supports types such as
+    `T*`, `std::optional`, `std::variant`, `std::expected`, `std::any`, and
+    polymorphic types. Library and user-defined alternative types participate
+    through a single customization point: `std::alternative_traits`.
   - Dedicated optional and parenthesized patterns are removed.
-  - Non-exhaustive selections and redundant cases are diagnosed as errors.
+  - Non-exhaustive and redundant cases are diagnosed as errors.
 
 The primary form is a selection expression:
 
@@ -142,8 +142,8 @@ The primary form is a selection expression:
 Every pattern is applied to a subject. A nested pattern's subject is supplied
 by its enclosing pattern. A declaration pattern initializes a declaration from
 its subject. A decomposition pattern supplies components as subjects to nested
-patterns, while an alternative pattern selects an alternative and, when
-present, supplies its projection as the subject of a nested pattern.
+patterns, while an alternative pattern selects an alternative and, when present,
+supplies it as the subject of a nested pattern.
 
 For an exactly matching subject, declaration syntax determines whether to create
 a new object or to initialize a reference (possibly a forwarding reference):
@@ -625,10 +625,9 @@ int get_area(const Shape& shape) {
 ```cpp
 int get_area(const Shape& shape) {
   return shape match {
-    case { const Circle& circle } =>
-      3.14 * circle.radius * circle.radius;
-    case { const Rectangle& rectangle } =>
-      rectangle.width * rectangle.height;
+    case { Circle: const auto& [r] } => 3.14 * r * r;
+    case { Rectangle: const auto& [w, h] } => w * h;
+    case _ => throw UnknownShape{};  // required
   };
 }
 ```
@@ -714,11 +713,11 @@ inspect (cmd) {
 ### This Paper
 ```cpp
 cmd match {
-  case { Quit: _ } => // ...
-  case { Move: [auto x, auto y] } => use(x, y);
-  case { Write: [auto text] } => use(text);
-  case { ChangeColor: [{ Rgb: [auto r, auto g, auto b] }] } => use(r, g, b);
-  case { ChangeColor: [{ Hsv: [auto h, auto s, auto v] }] } => use(h, s, v);
+  case { Quit } => // ...
+  case { Move: auto& [x, y] } => use(x, y);
+  case { Write: auto& [text] } => use(text);
+  case { ChangeColor: [{ Rgb: auto& [r, g, b] }] } => use(r, g, b);
+  case { ChangeColor: [{ Hsv: auto& [h, s, v] }] } => use(h, s, v);
 };
 ```
 
@@ -1361,6 +1360,7 @@ void f() {
 
 > | `{ @*pattern*@ }`
 > | `{ @*type-pattern*@ : @*pattern*@ }`
+> | `{ @*type-constraint*@ : @*pattern*@ }`
 > | `{ @*constant-expression*@ : @*pattern*@ }`
 > | `{ . @*identifier*@ : @*pattern*@ }`
 > | `{ . @*identifier*@ }`
@@ -1374,6 +1374,9 @@ runtime refinement with `dynamic_cast` semantics.
 - `{ T: P }` considers each projectable state for which type pattern `T` is
   applicable, then applies `P` to the selected or refined projection. Repeated
   alternatives are considered independently.
+- `{ C: P }`, where `C` is a type-constraint, considers each projectable state
+  whose declared alternative type satisfies `C`, then applies `P` to its
+  projection.
 - `{ I: P }`, where `I` is an integral constant expression, selects positional
   state `I` of a closed choice and applies `P` to its projection.
 - `{ .name: P }` selects a named state and applies `P` to its projection.
@@ -1408,6 +1411,19 @@ value match {
   case { pair<int, int>: [auto x, auto y] } => use_pair(x, y);
 };
 ```
+
+```cpp
+variant<int, long, double> number;
+
+number match {
+  case { std::integral: auto value } => use_integer(value);
+  case { std::same_as<double>: auto value } => use_double(value);
+};
+```
+
+Unlike `std::integral auto`, the `std::integral` before `:` does not declare an
+unnamed object or imply a placeholder type. It constrains the declared
+alternative type supplied by `alternative_traits`.
 
 The protocol for closed and open choices is described in
 [Discussion on Variant-like Types].
@@ -1852,6 +1868,8 @@ Every pattern is interpreted against one current subject:
 - `{ P }` requests a runtime projection or refinement and applies `P` to the
   resulting subject;
 - `{ T: P }` selects or refines a projected type before applying `P`;
+- `{ C: P }` selects a projected alternative whose declared type satisfies
+  type-constraint `C`;
 - `{ I: P }` selects positional state `I` of a closed choice;
 - `{ .name: P }` first selects a named state;
 - `_` ignores it without performing projection.
@@ -2014,9 +2032,11 @@ case std::integral auto
 case std::ranges::viewable_range auto&&
 ```
 
-R6 does not infer an implicit `auto` or `auto&&` for a bare type-constraint.
-The two forms can constrain different types, and a concept declaration carries
-no metadata that identifies the intended normalization.
+A bare type-constraint is not a general declaration or type pattern. It is
+permitted as the discriminator in `{ C: P }`, where it is applied directly to
+the closed protocol's declared alternative type. This does not infer an
+implicit `auto` or `auto&&`; those spellings remain available when placeholder
+deduction and cv/ref control are wanted in an ordinary declaration pattern.
 
 ## Decomposition patterns
 
@@ -2279,6 +2299,10 @@ struct alternative_traits<choice> {
   // Optional; defaults to true.
   static constexpr bool is_exhaustive = true;
 
+  template<auto I>
+    requires /* state I is projectable */
+  using type = /* declared alternative type */;
+
   static constexpr auto index(choice const&) noexcept;
 
   template<auto I, class Self>
@@ -2296,10 +2320,12 @@ struct alternative_traits<choice> {
 The protocol laws are:
 
 - `size` advertises a finite state set.
+- `type<I>` names the declared alternative type for each projectable state.
+  Its absence denotes a non-projectable state.
 - `index(subject)` identifies the active state and is `noexcept`.
-- State `I` is projectable when `get<I>(subject)` is well-formed. A valid
-  `void` result is a projection; an absent `get<I>` denotes a non-projectable
-  state.
+- State `I` is projectable when both `type<I>` and `get<I>(subject)` are
+  well-formed. `type<I>` may be `void`; an absent `type<I>` denotes a
+  non-projectable state.
 - `get<I>` has the precondition that `index(subject) == I` and preserves the
   subject's cv/ref category as defined by the provider.
 - `is_exhaustive == false` means runtime states can exist outside the
@@ -2345,6 +2371,10 @@ struct alternative_traits<T*> {
   static constexpr size_t size = 2;
   static constexpr bool is_exhaustive = true;
 
+  template<size_t I>
+    requires (I == 1 && !is_void_v<T>)
+  using type = T;
+
   static constexpr bool index(auto const& value) noexcept {
     return value ? true : false;
   }
@@ -2382,6 +2412,10 @@ struct alternative_traits<expected<T, E>> {
   static constexpr size_t size = 2;
   static constexpr bool is_exhaustive = true;
 
+  template<size_t I>
+    requires (I < size)
+  using type = conditional_t<I == 0, T, E>;
+
   static constexpr size_t index(expected<T, E> const& value) noexcept {
     return value.has_value() ? 0 : 1;
   }
@@ -2409,6 +2443,9 @@ template<class... Types>
 struct alternative_traits<variant<Types...>> {
   static constexpr size_t size = sizeof...(Types);
   static constexpr bool is_exhaustive = false;
+
+  template<size_t I>
+  using type = Types...[I];
 
   static constexpr size_t index(variant<Types...> const& value) noexcept {
     return value.index();
