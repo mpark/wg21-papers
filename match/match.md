@@ -285,104 +285,96 @@ projects.
 Before considering larger source examples, the following small example
 isolates a recurring operation.
 
-### Nullable and result alternatives
+### Nullable alternatives
 
-An optional value ordinarily requires a test followed by a projection:
-
-```cpp
-auto value = parseIntegerText(input);
-if (!value.has_value()) {
-  throw ParseError(fieldName, "expected an integer");
-}
-return std::move(*value);
-```
-
-The alternative pattern exposes both advertised states:
-
-```cpp
-return parseIntegerText(input) match -> string {
-  case { string value } => std::move(value);
-  case {} => throw ParseError(fieldName, "expected an integer");
-};
-```
-
-Expected-like types can expose named states:
-
-```cpp
-loadResources() match {
-  case { .value: auto&& resources }
-    => context.resources = std::move(resources);
-  case { .error: const string& error }
-    => return unexpected(format_error(error));
-};
-```
-
-`{}` denotes an advertised state with no projection. It is not a special
-spelling for `nullopt`.
-
-## Closed alternative dispatch
-
-Chromium commonly uses `absl::Overload` to construct a visitor with one lambda
-for each alternative. The survey found 284 such calls. WebNN's model editor
-uses six overloads to translate attribute values
-([source](https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/services/webnn/ort/model_editor.cc#L223-L270)):
+Chromium's `StringViewOrString::get()` selects between an optional owned string
+and a fallback view
+([source](https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/base/base64url.cc#L27-L41)):
 
 ::: cmptable
 
 ### Existing C++
 ```cpp
-std::visit(absl::Overload{
-  [&](int64_t value) {
-    CHECK_STATUS(ort_api->CreateOpAttr(
-        name.c_str(), &value, 1, ORT_OP_ATTR_INT,
-        ScopedOrtOpAttr::Receiver(attribute).get()));
-  },
-  [&](float value) {
-    CHECK_STATUS(ort_api->CreateOpAttr(
-        name.c_str(), &value, 1, ORT_OP_ATTR_FLOAT,
-        ScopedOrtOpAttr::Receiver(attribute).get()));
-  },
-  [&](base::cstring_view value) {
-    CHECK_STATUS(ort_api->CreateOpAttr(
-        name.c_str(), value.data(), value.size(), ORT_OP_ATTR_STRING,
-        ScopedOrtOpAttr::Receiver(attribute).get()));
-  },
-  [&](base::span<const int64_t> value) { /* ... */ },
-  [&](base::span<const float> value) { /* ... */ },
-  [&](base::span<const char*> value) { /* ... */ },
-}, data);
+std::string_view get() const {
+  if (str_) {
+    return *str_;
+  }
+  return piece_;
+}
 ```
 
 ### With pattern matching
 ```cpp
-data match {
-  case { int64_t value } => do {
-    CHECK_STATUS(ort_api->CreateOpAttr(
-        name.c_str(), &value, 1, ORT_OP_ATTR_INT,
-        ScopedOrtOpAttr::Receiver(attribute).get()));
+std::string_view get() const {
+  return str_ match {
+    case { auto& str } => str;
+    case {} => piece_;
   };
-  case { float value } => do {
-    CHECK_STATUS(ort_api->CreateOpAttr(
-        name.c_str(), &value, 1, ORT_OP_ATTR_FLOAT,
-        ScopedOrtOpAttr::Receiver(attribute).get()));
-  };
-  case { base::cstring_view value } => do {
-    CHECK_STATUS(ort_api->CreateOpAttr(
-        name.c_str(), value.data(), value.size(), ORT_OP_ATTR_STRING,
-        ScopedOrtOpAttr::Receiver(attribute).get()));
-  };
-  case { base::span<const int64_t> value } => /* ... */;
-  case { base::span<const float> value } => /* ... */;
-  case { base::span<const char*> value } => /* ... */;
+}
+```
+
+:::
+
+The same pattern applies to pointers. `GetWindowPropertyAsWindow()` selects
+between a projected window and a sentinel
+([source](https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/ui/gfx/x/connection.cc#L94-L99)):
+
+::: cmptable
+
+### Existing C++
+```cpp
+if (const Window* wm_window = PropertyCache::GetAs<Window>(value)) {
+  return *wm_window;
+}
+return Window::None;
+```
+
+### With pattern matching
+```cpp
+return PropertyCache::GetAs<Window>(value) match {
+  case { const Window& wm_window } => wm_window;
+  case {} => Window::None;
 };
 ```
 
 :::
 
-The handler bodies do not become shorter. The improvement is structural: the
-subject, selection, initialization, source order, and exhaustiveness are
-represented directly by the language rather than by a constructed overload
-set.
+These are intentionally small examples. They validate the common `{ P }` and
+`{}` vocabulary, even though the existing tests are already concise.
+
+## Closed alternative dispatch
+
+Chromium commonly uses `absl::Overload` to construct a visitor with one lambda
+for each alternative. The survey found 284 such calls. A compact example is
+`EnterpriseCompanionStatus::code()`
+([source](https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/chrome/enterprise_companion/enterprise_companion_status.h#L80-L85)):
+
+::: cmptable
+
+### Existing C++
+```cpp
+return std::visit(
+    absl::Overload{[](std::monostate) { return 0; },
+                   [](const PersistedError& error) { return error.code; },
+                   [](auto&& value) { return static_cast<int>(value); }},
+    status_variant_);
+```
+
+### With pattern matching
+```cpp
+return status_variant_ match {
+  case { std::monostate } => 0;
+  case { const PersistedError& error } => error.code;
+  case { auto&& value } => static_cast<int>(value);
+};
+```
+
+:::
+
+The result is only modestly shorter, but the alternative selection and
+declarations are visible without constructing an overload object. A larger
+[WebNN model-editor example](https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/services/webnn/ort/model_editor.cc#L223-L270)
+contains six explicit overloads with the same structure.
 
 A second common visitor form recovers the active type inside a generic lambda.
 LLVM serializes a closed artifact variant this way, dispatching through an
