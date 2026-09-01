@@ -48,8 +48,8 @@ prototype evidence for each item.
 
 | Area | Current direction | Discussion still needed |
 |---|---|---|
-| Current-subject declarations | A declaration pattern binds the current subject using exact-match initialization rules. A statically viable declaration is tried before polymorphic refinement with the success relation and adjusted-object result of `dynamic_cast`. | Nail down the exact conversion set, reference and bit-field behavior, arrays/functions, constraints, and wording for cross-casts and open-world hierarchies. |
-| Explicit choice projection | Braces enter a choice projection. `{ P }`, `{ .name: P }`, and `{}` represent generic, named, and empty states. | Decide whether a typed recursive selector is needed and whether every brace spelling has sufficient visual and semantic clarity. |
+| Current-subject declarations | A bare declaration pattern binds the current subject using exact-match initialization rules and never performs runtime refinement. | Nail down the exact conversion set, reference and bit-field behavior, arrays/functions, and constraints. |
+| Explicit runtime projection | Braces enter a runtime projection or refinement layer. `{ P }`, `{ .name: P }`, and `{}` represent generic, named, and empty choice states; `{ T& x }` can also request built-in polymorphic refinement. | Decide whether a typed recursive selector is needed and finish wording for cross-casts, pointer adjustment, and open-world hierarchies. |
 | `alternative_traits` | The protocol supports closed, open, and named views; raw pointers use equivalent built-in behavior. | Finalize the API, malformed-specialization diagnostics, `noexcept` requirements, header availability, and provider coherence. |
 | Templates | A source arm can produce semantic instantiations for each applicable projected type. An inapplicable pattern may be omitted under the dependent-arm model, but an applicable declaration whose initialization is ill-formed is an error. Impossible, refutable, and irrefutable cases are distinguished. | Specify implicit template-region identity, lookup, captures, statics, diagnostics, dependent usefulness, and the exact applicability boundary. |
 | Evaluation | Evaluate the subject once; use ordinary declaration initialization before a guard; permit equivalent projections to be reused. | Specify projection ordering and retention, mutation and invalidation effects, exceptions, cleanup, and lifetime precisely enough for portable reasoning. |
@@ -101,14 +101,14 @@ The central model is:
 
 > A pattern matches the current subject. A declaration binds the current
 > subject using ordinary C++ declaration semantics. Braces explicitly enter a
-> choice's projection layer.
+> runtime projection or refinement layer.
 
 This separates four operations that earlier designs risked conflating:
 
 - value matching, such as `0` or `Color::red`;
 - binding the current subject, such as `auto&& value`;
-- runtime refinement of the current subject, such as `Circle& circle` from a
-  polymorphic `Shape&`;
+- runtime refinement of the current subject, such as `{ Circle& circle }` from
+  a polymorphic `Shape&`;
 - projecting a state stored by a choice, such as `{ int value }` from a
   `variant` or `any`.
 
@@ -148,7 +148,7 @@ The revision-history section should lead with these changes.
   case void
   ```
 
-- Braces explicitly enter a choice projection:
+- Braces explicitly enter a runtime projection or refinement layer:
 
   ```cpp
   case { int value }
@@ -189,7 +189,8 @@ The revision-history section should lead with these changes.
 
 - Declaration patterns use ordinary C++ initialization and reference binding,
   restricted to overload-resolution exact-match conversion rank.
-- Static exact matching is followed by built-in polymorphic refinement using
+- Bare declaration and type patterns perform only static exact matching.
+- Braced patterns can request built-in polymorphic refinement using
   `dynamic_cast` when the current subject is a polymorphic class glvalue.
 - `variant`, `optional`, `expected`, and user-defined choices use a closed
   `alternative_traits` protocol.
@@ -670,7 +671,7 @@ constant-expression     // expression/value pattern
 declaration             // declaration pattern
 type-id                 // type pattern
 [P1, P2, ...]           // decomposition pattern; [] matches zero elements
-{ P }                   // generic choice projection
+{ P }                   // runtime projection or refinement
 { .name: P }            // named choice projection
 {}                      // non-projectable advertised state
 ```
@@ -956,23 +957,31 @@ of an already applicable declaration initialization into fallback behavior.
 
 ### Static exact match and polymorphic refinement
 
-An ordinary declaration/type pattern first attempts static exact matching. If
-that does not apply and the current subject is a polymorphic class glvalue, a
-derived declaration can perform runtime refinement using `dynamic_cast`:
+An ordinary declaration/type pattern performs only static exact matching.
+Braces explicitly request runtime refinement when the current subject is a
+polymorphic class glvalue:
 
 ```cpp
 Shape& shape = get_shape();
 
 shape match {
-  case Circle& circle => draw(circle);
-  case Square& square => draw(square);
-  case _              => unknown(shape);
+  case { Circle& circle } => draw(circle);
+  case { Square& square } => draw(square);
+  case _                  => unknown(shape);
 };
 ```
 
-This is built-in language behavior, not an ADL `try_cast` protocol. Pointer
-forms remain supported where ordinary `dynamic_cast` can express them, though
-`case { Circle& circle }` on a pointer-like projection is often clearer.
+This is built-in language behavior, not an ADL `try_cast` protocol. A pointer
+subject uses its nullable projection first, after which the pointee can be
+refined with the same braced declaration:
+
+```cpp
+shape_pointer match {
+  case { Circle& circle } => draw(circle);
+  case {}                 => no_shape();
+  case _                  => unknown(*shape_pointer);
+};
+```
 
 Polymorphic refinement should use the success relation and adjusted-object
 result of the corresponding built-in `dynamic_cast`. This includes public
@@ -981,6 +990,18 @@ failed refinement is a non-match rather than an exception; this can be
 specified in terms of the pointer form of `dynamic_cast`, followed by binding
 the declaration to the adjusted object while preserving the required cv/ref
 and value-category semantics.
+
+One precedence question remains for a class that is both polymorphic and an
+`alternative_traits` model. The prototype currently gives a directly viable
+polymorphic refinement such as `{ Derived& }` priority over generic choice
+projection, while named forms necessarily select `alternative_traits`. R6
+should either specify that priority or require a less overlapping spelling.
+
+Pointer syntax also exposes the layering. A direct `Shape*` is first treated
+as nullable, so `{ Circle& c }` means non-null, dereference, then refine. If a
+closed choice first projects a `Shape*` payload, `{ Circle* c }` can instead
+refine that projected pointer. Both are compositional, but examples should make
+the distinction explicit.
 
 This is deliberately an open-world relation, not an exact dynamic-type or
 vptr-equality test:
@@ -994,8 +1015,8 @@ struct Square : Rectangle {};
 
 void draw_shape(Shape& shape) {
   shape match {
-    case Rectangle& rectangle => draw(rectangle);
-    case _                    => unknown(shape);
+    case { Rectangle& rectangle } => draw(rectangle);
+    case _                        => unknown(shape);
   };
 }
 ```
@@ -1015,25 +1036,25 @@ The paper must explain the static/runtime boundary directly. `typeid` is a
 useful precedent for behavior that depends on whether the static type is
 polymorphic, but it is not the matching mechanism.
 
-The same source pattern can be a static exact match in one specialization and
-a runtime refinement in another:
+The explicit braces prevent the same source pattern from changing between a
+static exact match and runtime refinement in different specializations:
 
 ```cpp
 void inspect(auto& value) {
   value match {
-    case Circle& circle => use(circle);
-    case _              => fallback(value);
+    case { Circle& circle } => use(circle);
+    case _                  => fallback(value);
   };
 }
 
 Circle circle;
-inspect(circle);                       // static exact match
-inspect(static_cast<Shape&>(circle));  // runtime refinement
+inspect(circle);                       // refinement succeeds trivially
+inspect(static_cast<Shape&>(circle));  // runtime downcast succeeds
 ```
 
-That behavior is coherent with the static type of the current subject, but it
-must not be hidden in wording. A programmer who wants static type dispatch
-without polymorphic refinement will need the future type-subject facility.
+Omitting the braces requests only static declaration matching. A programmer
+who wants static type dispatch without a value subject will need the future
+type-subject facility.
 
 ### Optimizing polymorphic refinement
 
@@ -1075,10 +1096,10 @@ For example:
 
 ```cpp
 shape match {
-  case Square& square if small(square) => draw_small(square);
-  case Square& square                  => draw(square);
-  case Rectangle& rectangle            => draw(rectangle);
-  case _                               => unknown(shape);
+  case { Square& square } if small(square) => draw_small(square);
+  case { Square& square }                  => draw(square);
+  case { Rectangle& rectangle }            => draw(rectangle);
+  case _                                   => unknown(shape);
 };
 ```
 
@@ -1777,7 +1798,7 @@ should therefore motivate this syntax with refutable patterns:
 if (case 0 = value) { ... }
 if (case [int x, 0] = pair) { ... }
 if (case { int i } = variant_value) { ... }
-if (case Circle& circle = shape) { ... }
+if (case { Circle& circle } = shape) { ... }
 ```
 
 Swift accepts irrefutable `if case` patterns but diagnoses that the condition
@@ -2593,7 +2614,7 @@ The language should keep `dynamic_cast`-equivalent open-world semantics and
 let implementations select the fast paths described under "Optimizing
 polymorphic refinement." If exact dynamic type matching is later useful enough
 to expose, it should receive distinct syntax rather than silently changing the
-meaning of `case Circle& circle`.
+meaning of `case { Circle& circle }`.
 
 ### Runtime marker spellings
 
@@ -2601,9 +2622,10 @@ meaning of `case Circle& circle`.
 runtime keyword were explored. `is` and `as` carried P2392 conversion and
 future-expression expectations. Parentheses suggested overloads. Square
 brackets conflict with structural decomposition. Angle brackets have severe
-C++ parsing costs. Braces best communicate entry into a stored/projected state
-for variants and remain explicit for `any`; polymorphic refinement stays naked
-because it refines the current object rather than entering a choice.
+C++ parsing costs. Braces provide one explicit runtime boundary for variants,
+`any`, nullable projection, and polymorphic refinement. The underlying
+mechanisms remain distinct, but a bare declaration never silently changes from
+static binding to runtime dispatch.
 
 ### Optional and expected
 
@@ -2620,10 +2642,10 @@ usefulness analysis.
 
 ### Bare declarations for `any`
 
-Allowing naked `int value` to inspect `any` was rejected. For a polymorphic
-class, `Circle&` visibly requests refinement and `int` cannot accidentally do
-so. With `any`, even `int value` would silently acquire runtime type-erasure
-behavior. Requiring `{ int value }` makes that boundary explicit.
+Allowing naked `int value` to inspect `any` was rejected because it would
+silently acquire runtime type-erasure behavior. Requiring `{ int value }`
+makes that boundary explicit, just as `{ Circle& circle }` explicitly requests
+polymorphic refinement.
 
 ### Guard constification and deferred initialization
 
@@ -3021,9 +3043,9 @@ These are design questions, not merely implementation work.
 3. **Open: dependent usefulness.** Distinguish substitution-dependent
    viability from universal redundancy without unstable diagnostics.
 4. **Direction chosen; wording open: declaration exact-match
-   and polymorphic boundary.** Exact-match declaration semantics are followed
-   by open-world refinement with built-in `dynamic_cast` semantics. Finish
-   wording and examples for reference binding, decay, qualification,
+   and polymorphic boundary.** Bare declarations use exact-match semantics;
+   braces request open-world refinement with built-in `dynamic_cast`
+   semantics. Finish wording and examples for reference binding, decay, qualification,
    functions, arrays, bit-fields, concepts, duplicate alternatives,
    cross-casts, pointer adjustment, and open hierarchies. Define applicability
    separately from selected declaration initialization so that an applicable
@@ -3033,6 +3055,8 @@ These are design questions, not merely implementation work.
 5. **Partially resolved: `alternative_traits` API.** Closed, open, named, and
    nullable models are implemented. Settle naming, lookup, coherence laws,
    exception requirements, malformed specializations, and header placement.
+   Also settle precedence when the same class is both polymorphic and an
+   `alternative_traits` model.
 6. **Open: named-provider coherence.** Decide whether partial cross-provider
    overlap remains conservatively opaque, providers are locked per projected
    subject, or the protocol gains overlap metadata.
@@ -3949,8 +3973,8 @@ struct Rectangle : Shape { int r; };
 
 void rt(Shape const& s) {
     void(s match {
-        case Circle const& c => c.c;
-        case Rectangle const& r => r.r;
+        case { Circle const& c } => c.c;
+        case { Rectangle const& r } => r.r;
         case _ => 0;
     });
 }
@@ -3969,8 +3993,8 @@ void rt2(S const& s) {
     // typeid(s) --> this is static type of s if s is not polymorphic.
     //               if S is Shape, then dynamic type
     s match {
-        case Circle const& c => c.c;
-        case Rectangle const& r => r.r;
+        case { Circle const& c } => c.c;
+        case { Rectangle const& r } => r.r;
         case auto&& shape => 0;
     };
 }

@@ -51,7 +51,7 @@ constant-expression       // value pattern
 declaration               // declaration pattern
 type-pattern              // declaration with its identifier omitted
 [P1, P2, ...]             // decomposition pattern
-{ P }                     // generic choice projection
+{ P }                     // runtime projection or refinement
 { .name: P }              // named choice projection
 {}                        // advertised state with no projection
 ```
@@ -65,8 +65,9 @@ case auto&& value
 case std::integral auto value
 ```
 
-A declaration does not implicitly enter a `variant`, `optional`, or `any`.
-Braces request that operation:
+A declaration does not implicitly enter a `variant`, `optional`, or `any`, and
+does not implicitly refine a polymorphic class. Braces request those runtime
+operations:
 
 ```cpp
 variant<int, string> value;

@@ -23,8 +23,8 @@ syntax based on implementation experience and a survey of production C++.
 The central R6 rule is:
 
 > A pattern matches its current subject. A declaration binds that subject
-> using C++ declaration semantics. Braces explicitly enter the projection
-> layer of a choice type.
+> using C++ declaration semantics. Braces explicitly enter a runtime
+> projection or refinement layer.
 
 R6 targets C++29 and adds mandatory usefulness and exhaustiveness checking,
 dependent case instantiation, a generalized choice customization protocol, and
@@ -66,7 +66,8 @@ the proposed R6 wording.
   - Declaration patterns replace `let` bindings. A declaration with its
     identifier omitted is a type pattern and performs no initialization.
   - Braces explicitly request choice projection: `{ P }`, `{ .name: P }`, and
-    `{}`.
+    `{}`. The same braces request built-in polymorphic refinement, so a bare
+    declaration or type pattern remains purely static.
   - The R5 optional pattern `? P`, alternative selector `T: P`, and
     parenthesized pattern are removed from the current design.
   - A single-pattern test is written `subject match case P`.
@@ -170,7 +171,7 @@ case auto&& forwarded
 case std::integral auto integer
 ```
 
-Braces explicitly enter the projection layer of a choice type:
+Braces explicitly enter a runtime projection or refinement layer:
 
 ```cpp
 variant<int, string> value;
@@ -609,9 +610,9 @@ int get_area(const Shape& shape) {
 ```cpp
 int get_area(const Shape& shape) {
   return shape match {
-    case const Circle& circle =>
+    case { const Circle& circle } =>
       3.14 * circle.radius * circle.radius;
-    case const Rectangle& rectangle =>
+    case { const Rectangle& rectangle } =>
       rectangle.width * rectangle.height;
   };
 }
@@ -1083,7 +1084,7 @@ constexpr int x = 42;
 }
 ```
 
-Braces explicitly enter a choice's projection layer:
+Braces explicitly enter a runtime projection or refinement layer:
 
 ```cpp
 variant<int, string> value;
@@ -1098,6 +1099,25 @@ value match {
 The first arm dominates in this illustrative example. Its purpose is to show
 that `auto&& whole` binds the `variant`, while `{ auto&& payload }` would bind
 its active alternative.
+
+The same distinction applies to polymorphic classes:
+
+```cpp
+Shape& shape = get_shape();
+
+shape match {
+  case { Circle& refined } => draw(refined); // dynamic_cast
+  case _                   => draw_unknown(shape);
+};
+
+Circle circle;
+circle match {
+  case Circle& exact => static_circle(exact); // ordinary exact binding
+};
+```
+
+A bare declaration never silently acquires runtime behavior from the static
+type of its subject.
 
 On the right of `=>`, R6 supports expressions, a null statement, direct
 `static_assert`, and jump actions. A `do` expression [@P2806R2] provides a
@@ -1331,7 +1351,9 @@ void f() {
 > | `{ . @*identifier*@ }`
 > | `{ }`
 
-Braces enter the projection layer advertised by a choice type.
+For a choice type, braces enter the projection layer advertised by that type.
+For a polymorphic class, a type-directed braced pattern instead performs
+runtime refinement with `dynamic_cast` semantics.
 
 - `{ P }` considers each projectable state and applies `P` to its projection.
 - `{ .name: P }` selects a named state and applies `P` to its projection.
@@ -1796,7 +1818,8 @@ Every pattern is interpreted against one current subject:
 
 - a declaration or type pattern applies directly to it;
 - `[P1, P2]` decomposes it and gives each child a component subject;
-- `{ P }` requests a projected subject and applies `P` to that projection;
+- `{ P }` requests a runtime projection or refinement and applies `P` to the
+  resulting subject;
 - `{ .name: P }` first selects a named state;
 - `_` ignores it without performing projection.
 
@@ -2004,18 +2027,18 @@ the pack is expanded.
 
 ## Static matching and polymorphic refinement
 
-A declaration or type pattern first attempts ordinary static exact matching.
-If that is not applicable and the current subject is a polymorphic class
-glvalue, a class declaration can perform runtime refinement with the semantics
-of the corresponding pointer-form `dynamic_cast`:
+A bare declaration or type pattern performs only ordinary static exact
+matching. Runtime refinement of a polymorphic class is explicitly requested by
+braces and has the semantics of the corresponding pointer-form
+`dynamic_cast`:
 
 ```cpp
 void draw(Shape& shape) {
   shape match {
-    case Circle& circle       => draw_circle(circle);
-    case Triangle& triangle   => draw_triangle(triangle);
-    case Rectangle& rectangle => draw_rectangle(rectangle);
-    default                   => draw_unknown(shape);
+    case { Circle& circle }       => draw_circle(circle);
+    case { Triangle& triangle }   => draw_triangle(triangle);
+    case { Rectangle& rectangle } => draw_rectangle(rectangle);
+    default                       => draw_unknown(shape);
   };
 }
 ```
@@ -2023,52 +2046,44 @@ void draw(Shape& shape) {
 The semantics include public downcasts, virtual inheritance, pointer
 adjustment, and valid cross-casts. A failed cast is a non-match.
 
-Pointer targets use the corresponding pointer cast semantics:
+Pointer subjects first use the nullable projection model. The projected object
+can then be refined polymorphically:
 
 ```cpp
 void inspect(Shape* shape) {
   shape match {
-    case Circle* circle => mutate(circle);
-    default             => no_circle();
+    case { Circle& circle } => mutate(&circle);
+    case {}                 => null_shape();
+    default                 => other_shape();
   };
 }
-```
-
-The explicit nullable projection is also available when dereferencing first is
-the clearer operation:
-
-```cpp
-shape match {
-  case { Circle& circle } => mutate(&circle);
-  case {}                 => null_shape();
-  default                 => other_shape();
-};
 ```
 
 The relation is open-world. If `Square` derives from `Rectangle` in another
 translation unit or shared library, a `Square` object passed as `Shape&` must
 still match `Rectangle&`. Exact dynamic type or vptr equality is insufficient.
 
-The same pattern can therefore be a static match in one specialization and a
-runtime refinement in another:
+The explicit marker prevents one source pattern from changing between static
+matching and runtime refinement as a template is instantiated:
 
 ```cpp
 void inspect(auto& value) {
   value match {
-    case Circle& circle => use(circle);
-    default             => fallback(value);
+    case { Circle& circle } => use(circle);
+    default                 => fallback(value);
   };
 }
 
 Circle circle;
-inspect(circle);                       // static exact match
-inspect(static_cast<Shape&>(circle));  // runtime refinement
+inspect(circle);                       // refinement succeeds trivially
+inspect(static_cast<Shape&>(circle));  // runtime downcast succeeds
 ```
 
-Static type subjects are a separate future facility. R6 does not propose a
-syntax such as `T match { case int => ... }`.
+To require only a static match, omit the braces. Static type subjects are a
+separate future facility; R6 does not propose a syntax such as
+`T match { case int => ... }`.
 
-## Why choice projection is explicit
+## Why runtime projection and refinement are explicit
 
 Without a projection marker, this declaration is ambiguous in intent:
 
@@ -2084,6 +2099,11 @@ declaration meaning: it binds the `variant`. Braces enter the choice:
 case auto&& whole       // the variant object
 case { auto&& payload } // the active payload
 ```
+
+The same marker prevents declaration syntax from changing meaning when a
+template argument changes from a concrete derived type to a polymorphic base.
+`Circle& circle` is always a static declaration pattern;
+`{ Circle& circle }` is the runtime-refining form.
 
 The same rule applies to structure:
 
@@ -2958,8 +2978,8 @@ alternative".
 R6 separates the operations instead:
 
 ```cpp
-case int value       // bind or refine the current subject
-case { int value }   // project a choice, then bind or refine its payload
+case int value       // statically bind the current subject
+case { int value }   // runtime-project or refine, then bind the result
 ```
 
 The exact-match restriction prevents ordinary numeric conversions from
@@ -2968,10 +2988,10 @@ silently changing closed-choice dispatch.
 ## Why `any` also requires braces
 
 Allowing a naked `int value` to inspect `any` would make a simple declaration
-silently perform runtime type erasure only for one library type. Braces make
-`any`, `variant`, and user-defined choices share the same explicit operation,
-while polymorphic class refinement remains an extension of ordinary reference
-binding and `dynamic_cast`.
+silently perform runtime type erasure. Braces make `any`, `variant`,
+user-defined choices, and polymorphic classes share the same visible runtime
+boundary. The mechanism differs by subject: `any` uses its open-choice
+protocol, while polymorphic classes retain `dynamic_cast` semantics.
 
 ## Why non-viability is not `false`
 
@@ -5072,7 +5092,7 @@ under `x86-64 clang (pattern matching - P2688)`{.default}.
 - Parsing and AST representation for match expressions, arms, patterns, and
   direct conditions.
 - Declaration, type, value, decomposition, closed/open choice, pointer, and
-  polymorphic patterns.
+  braced polymorphic patterns.
 - Dependent semantic case instantiation and implicit template regions.
 - Constant evaluation and runtime code generation.
 - Subject evaluation and lifetime extension.
@@ -5146,8 +5166,9 @@ optimization. A dedicated decision-DAG lowering remains future work.
 
 ### Dynamic class matching
 
-Semantics must remain those of an ordered sequence of `dynamic_cast`
-refinements, including open-world derived classes and pointer adjustment. The
+Braced polymorphic refinement must retain the semantics of an ordered sequence
+of `dynamic_cast` refinements, including open-world derived classes and pointer
+adjustment. The
 compiler can nevertheless common repeated targets, derive base matches from a
 successful more-derived result, use final-class fast paths, and employ LTO or
 profile-guided caches while preserving that relation.
@@ -5163,6 +5184,8 @@ identity for discriminators from cache identity for selected projections.
 ## Known implementation gaps
 
 - Polymorphic refinement does not yet implement every valid cross-cast.
+- The precedence for a class that is both polymorphic and an
+  `alternative_traits` model still needs a final design rule.
 - Modules and complete tooling support remain deferred.
 - Some direct loop conditions that require case instantiation are still more
   restricted than `if`.

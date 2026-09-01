@@ -134,7 +134,7 @@ case { auto&& x }                      => ...;
 
 ::: {.callout}
 This leads to the central R6 rule: **a declaration matches the current
-subject; braces explicitly enter a choice's projection layer.**
+subject; braces explicitly enter a runtime projection or refinement layer.**
 :::
 
 # Use case: type and structure compose
@@ -436,10 +436,10 @@ Pattern matching
 ```cpp
 bool IntegerNode::equalTo(const Node& other) const {
   return other match {
-    case const IntegerNode& i
+    case { const IntegerNode& i }
       => value_ == i.value_;
 
-    case const FloatingNode& d
+    case { const FloatingNode& d }
       => value_ == d.value_;
 
     case _ => false;
@@ -449,8 +449,8 @@ bool IntegerNode::equalTo(const Node& other) const {
 :::
 ::::
 
-No braces: a derived object **is a** base object; this is refinement, not
-projection from a choice.
+Braces mark the runtime boundary. Here they request polymorphic refinement with
+`dynamic_cast` semantics rather than closed-choice projection.
 
 # What the survey changed
 
@@ -461,7 +461,7 @@ projection from a choice.
 | Value tests across alternatives occur | Keep composable `{ 0 }`, not only type dispatch |
 | Tuple-like alternatives occur among other types | Permit `{ [P...] }` across viable projections |
 | Expected-like code names value and error | Support named alternatives |
-| Polymorphic casts are already declaration-shaped | Keep `Circle& c` direct |
+| Bare declarations should not silently become runtime operations | Use `{ Circle& c }` for polymorphic refinement |
 | Static multi-dispatch examples were difficult to find | Do not make runtime syntax serve speculative static dispatch |
 
 ::: {.callout}
@@ -477,13 +477,13 @@ composability that motivated P2688.
 | `T x` | Declare `x` from the current subject |
 | `T` | Test the current subject as if `T x` had omitted `x` |
 | `[P1, P2]` | Decompose the current subject |
-| `{ P }` | Enter an advertised choice projection, then match `P` |
+| `{ P }` | Enter a runtime projection or refinement layer, then match `P` |
 | `{ .name: P }` | Select a named state, project it, then match `P` |
 | `{}` | Match an advertised non-projectable state |
 | `_` | Match the current subject without projection |
 
 ::: {.callout}
-**Casts refine the subject. Braces project a choice.**
+**Bare declarations are static. Braces mark runtime projection or refinement.**
 :::
 
 # Arms now say `case`
@@ -888,6 +888,7 @@ needs to specify which protocol and decomposition operations may be reused.
 | `? let x` | `{ auto&& x }` | One projection model |
 | empty optional via `_` | `{}` | Name the non-projectable state |
 | direct `any` cast pattern | `{ T x }` | Type erasure is an explicit open choice |
+| direct polymorphic declaration | `{ T& x }` | Runtime refinement is explicit |
 | `(P)` pattern | removed | Parentheses retain expression meaning |
 
 The old selector solved composition problems. A future explicit selector may
@@ -900,7 +901,7 @@ The Clang/libc++ prototype now includes:
 
 - Required `case` syntax and single-pattern `E match case P`
 - Declaration and type patterns
-- Polymorphic runtime refinement
+- Braced polymorphic runtime refinement
 - Braced, named, and empty projection patterns
 - Closed and open `alternative_traits`
 - Pointer, `optional`, `expected`, `variant`, and `any` models
