@@ -47,7 +47,7 @@ highlighting:
   - The R5 optional and parenthesized patterns are removed. Its unbraced
     `T: P` selector is replaced by the explicit braced form `{ T: P }`.
   - A single-pattern test is written `subject match case P`.
-  - Binding-producing conditions use `case P = subject`; range-for additionally
+  - Pattern conditions use `case P = subject`; range-for additionally
     supports `case P : range` with filtering semantics.
   - The proposed `alternative_traits` protocol supports closed indexed
     choices, named views, non-projectable states, and open type-erased choices.
@@ -181,7 +181,7 @@ Pointers and polymorphic types use built-in language rules. Library and
 user-defined alternative types participate through the proposed
 `std::alternative_traits` customization point.
 
-A Boolean single-pattern match is performed with `match case`:
+A single-pattern test is performed with `match case`:
 
 ```cpp
 @*expression*@ match case @*pattern*@
@@ -256,8 +256,8 @@ distinction between declarations and expressions while using ordinary
 declaration syntax to express type, ownership, references, and forwarding.
 A bare identifier remains an expression that refers to an existing name.
 
-R6 covers the `match` selection expression, a boolean-yielding single-pattern
-test, and pattern conditions. It specifies the five pattern forms described in
+R6 covers the `match` selection expression, single-pattern tests, and pattern
+conditions. It specifies the five pattern forms described in
 the introduction and their composition over product types, nullable types,
 closed and open alternative types, and polymorphic types. It also specifies
 participation by user-defined alternative types through `alternative_traits`
@@ -1159,10 +1159,10 @@ This is an informal overview of the syntax proposed in this paper.
 See [](#expr-match) for the formal grammar.
 
 ```cpp
-// Single pattern test; does not export bindings.
+// Single-pattern test; does not export names.
 @*expression*@ match case @*pattern*@
 
-// Binding-producing direct condition.
+// Pattern condition.
 case @*pattern*@ = @*inclusive-or-expression*@
 
 // Selection pattern match
@@ -1720,12 +1720,12 @@ value match -> int {
 ```
 
 `default` is exactly an unguarded top-level `case _`. It is not a pattern, so
-it cannot be nested, used by a single-pattern expression, or given a guard.
+it cannot be nested, used by a single-pattern test, or given a guard.
 Source order remains significant; `default` is not implicitly tested last.
 
-## Single-pattern forms
+## Single-pattern tests and pattern conditions
 
-The ordinary Boolean expression is:
+A single-pattern test is:
 
 ```cpp
 subject match case pattern
@@ -1734,16 +1734,21 @@ subject match case pattern
 It does not export bindings. A non-viable pattern makes the expression
 ill-formed.
 
-The binding-producing condition forms are:
+Pattern conditions are used in `if`, `while`, and traditional `for` statements:
 
 ```cpp
 if (case pattern = subject) statement
 while (case pattern = subject) statement
 for (init-statement; case pattern = subject; expression) statement
+```
+
+The corresponding range-for form is:
+
+```cpp
 for (case pattern : range) statement
 ```
 
-Direct conditions can participate in a left-to-right built-in conjunction:
+Pattern conditions can participate in a left-to-right built-in conjunction:
 
 ```cpp
 if (ready && case [int x, int y] = first &&
@@ -1811,7 +1816,7 @@ position. The design uses these disambiguation rules:
 - Parentheses force the ordinary expression interpretation where applicable;
   there is no parenthesized-pattern AST node.
 - In `case P = E`, the first top-level `=` terminates the pattern.
-- In a direct condition, each ordinary Boolean element and each case subject
+- In a pattern condition, each ordinary Boolean element and each case subject
   is an *inclusive-or-expression*. A top-level `&&` separates condition
   elements; assignment, conditional expressions, and `||` require
   parentheses.
@@ -2489,7 +2494,7 @@ reference from within the same pattern to a name introduced by that pattern is
 ill-formed. This avoids silently changing an expression pattern from an outer
 name to an earlier sibling binding.
 
-`subject match case P` never exports names. In a direct condition, names are
+`subject match case P` never exports names. In a pattern condition, names are
 available in later `&&` elements and the successful controlled statement, but
 not in `else`:
 
@@ -2501,7 +2506,7 @@ if (case [int x, int y] = value && x < y) {
 }
 ```
 
-The direct condition is strict. `P` must be viable after substitution; a
+The pattern condition is strict. `P` must be viable after substitution; a
 non-viable pattern is not converted to `false`. Static detection uses a
 requires-expression:
 
@@ -2530,7 +2535,7 @@ outside the scope of the element binding.
 
 # Templates and Case Instantiation
 
-## Strict single-pattern matching
+## Strict single-pattern tests
 
 For a viable pattern, `E match case P` has the same value behavior as:
 
@@ -2542,7 +2547,7 @@ E match {
 ```
 
 The equivalence is not a well-formedness transformation. A non-viable `P`
-makes the single-pattern expression ill-formed, even where a dependent
+makes the single-pattern test ill-formed, even where a dependent
 selection with multiple cases could omit that semantic case.
 
 This separates two questions:
@@ -2704,7 +2709,7 @@ missing value.
 - Its original value category is retained for projections.
 - In an ordinary match expression, the hidden subject survives through the
   containing full-expression.
-- In a direct condition, the hidden subject survives through the controlled
+- In a pattern condition, the hidden subject survives through the controlled
   statement, including the `else` path, using the same lifetime-extension
   machinery as condition variables and C++23 range-for.
 
@@ -2801,10 +2806,10 @@ constexpr auto result(auto value) {
 The assertion is instantiated only for a specialization not closed by an
 earlier unguarded irrefutable case.
 
-`match constexpr` requires selected pattern conditions and guards to be
-constant expressions and discards unselected handlers in the style of
-`if constexpr`. It does not change pattern viability or turn direct conditions
-into detection operations.
+`match constexpr` requires the tests performed by selected patterns and their
+guards to be constant expressions and discards unselected handlers in the
+style of `if constexpr`. It does not change pattern viability or turn pattern
+conditions into detection operations.
 
 
 # R6 Design Rationale and Alternatives
@@ -2835,7 +2840,7 @@ int result = value match {
 };
 ```
 
-The same operator also supports a single-pattern Boolean test. R6 adds `case`
+The same operator also supports a single-pattern test. R6 adds `case`
 to make that form read as `E match case P`, but retains the unified model
 rather than introducing a separate `is` expression with different pattern
 semantics.
@@ -3070,8 +3075,8 @@ An explicit `match requires` mode was explored for dependent cases. It makes
 structural generic dispatch convenient, but creates two nearly identical match
 forms and does not remove the need to distinguish inapplicability from failure
 of a selected declaration initialization. R6 instead gives dependent case
-matching its own case-instantiation rules and keeps required single-pattern
-conditions strict.
+matching its own case-instantiation rules and keeps single-pattern tests
+strict.
 
 This is a deliberate change from the strict static-condition rule explored in
 R5. That rule caught mistakes such as a string literal in a character match:
@@ -3092,7 +3097,7 @@ If `op.kind()` is dependent, R6's case-instantiation model can classify
 the erroneous case as inapplicable for a specialization whose result is
 `char`. That flexibility is necessary for generic projected cases over a
 dependent choice, but it weakens typo detection. The strict single-pattern
-form and an explicit `requires` expression retain a way to ask the viability
+test and an explicit `requires` expression retain a way to ask the viability
 question. Whether dependent case matching needs an additional opt-in
 strict mode remains a design question worth presenting to EWG.
 
@@ -3126,7 +3131,7 @@ value match {
 
 It also admits the full condition grammar, including init-statements and
 condition declarations, without inventing another unparenthesized expression
-boundary. The pattern-first direct condition uses a different solution:
+boundary. The pattern condition uses a different solution:
 top-level `&&` separates later conditions, so it does not accept a case-style
 trailing guard.
 
@@ -5164,7 +5169,7 @@ under `x86-64 clang (pattern matching - P2688)`{.default}.
 ## What is implemented
 
 - Parsing and AST representation for match expressions, cases, patterns, and
-  direct conditions.
+  pattern conditions.
 - Declaration, type, value, decomposition, closed/open choice, pointer, and
   braced polymorphic patterns, including recursive type and positional choice
   selectors.
@@ -5311,7 +5316,7 @@ historical context; the R6 status above supersedes it:
 ::: note
 This subsection records the R5 parser architecture. The R6 parser retains the
 same precedence integration but recognizes `case`, declaration patterns,
-choice braces, and direct conditions as described above.
+choice braces, and pattern conditions as described above.
 :::
 
 Broadly speaking, in Clang, expressions are first parsed as a *cast-expression* with `ParseCastExpression`,
@@ -5427,8 +5432,7 @@ The following polls are expected to be split as the design is reviewed:
    projection.
 3. Require non-exhaustiveness and redundant cases to be diagnosed as errors.
 4. Support the closed and open `alternative_traits` customization model.
-5. Support the strict single-pattern expression and binding-producing direct
-   condition forms.
+5. Support single-pattern tests and pattern conditions.
 
 
 # Proposed Wording
