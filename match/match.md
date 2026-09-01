@@ -10,58 +10,32 @@ toc: true
 toc-depth: 4
 highlighting:
   keywords:
-    cpp: ["match", "inspect", "is", "as"]
+    cpp: ["match", "let", "inspect", "is", "as"]
 ---
-
-# Abstract
-
-This paper proposes a composable pattern-matching facility for C++ centered on
-the `match` expression. R6 preserves the expression-oriented and composable
-foundation of [@P2688R5], while revising the binding and choice-projection
-syntax based on implementation experience and a survey of production C++.
-
-The central R6 rule is:
-
-> A pattern matches its current subject. A declaration binds that subject
-> using C++ declaration semantics. Braces explicitly enter a runtime
-> projection or refinement layer.
-
-R6 targets C++29 and adds mandatory usefulness and exhaustiveness checking,
-dependent case instantiation, a generalized choice customization protocol, and
-additional condition and handler forms.
-
-::: note
-This is an incremental working revision of R5. Sections not yet updated retain
-their R5 text so that design rationale, examples, acknowledgements, and wording
-remain reviewable while the R6 changes are applied. In particular, the
-[Proposed Wording] section is currently the R5 wording baseline and is not yet
-the proposed R6 wording.
-:::
 
 # Revision History {-}
 
 ## R5 → R6 {- .unlisted}
-  - Further implementation was completed in Jan 2025, prior to the Hagenberg meeting.
+  - Prior to the Hagenberg meeting in January 2025, further implementation
+    was completed.
+    - Runtime code generation was fully implemented by Bruno Cardoso Lopes.
     - Handling of `match` expressions in dependent contexts
     - Parsing of `@*type-constraint*@: @*pattern*@` syntax
     - `try_cast` protocol for the `@*type-id*@: @*pattern*@` alternative pattern.
-    - Runtime code generation 
-  - At the Hagenberg meeting in Feb 2025, the following poll was taken in EWG:
+  - At the Hagenberg meeting in February 2025, the following poll was taken in EWG:
 
-> > Poll: [@P2688R5] — Pattern Matching: `match` Expression: forward to CWG
-> > for inclusion in C++26.
-> >
-> >  SF    F   N   A   SA
-> > ----  --- --- --- ----
-> >  20   11   6   13  5
-> >
-> > Result: Not consensus
+    > Poll: [@P2688R5] - Pattern Matching: `match` Expression: forward to CWG
+    > for inclusion in C++26.
+    >
+    >  SF    F   N   A   SA
+    > ----  --- --- --- ----
+    >  20   11   6   13  5
+    >
+    > Result: Not consensus
 
-    As such, this proposal now targets C++29.
-
-  - Updated the examples in [Comparison Tables] with [@P2392R3] syntax.
   - The proposal now targets C++29.
-  - Match arms require `case`; an unguarded top-level wildcard can also be
+  - Updated the examples in [Comparison Tables] with [@P2392R3] syntax.
+  - Match cases require `case`; an unguarded top-level wildcard can also be
     written `default`.
   - Declaration patterns replace `let` bindings. A declaration with its
     identifier omitted is a type pattern and performs no initialization.
@@ -75,7 +49,7 @@ the proposed R6 wording.
     supports `case P : range` with filtering semantics.
   - The proposed `alternative_traits` protocol supports closed indexed
     choices, named views, non-projectable states, and open type-erased choices.
-  - Non-exhaustiveness and redundant arms are language errors. Coverage
+  - Non-exhaustiveness and redundant cases are language errors. Coverage
     distinguishes required states from residual states.
   - The Clang prototype now supports dependent case instantiation, runtime and
     constant evaluation, subject lifetime extension, projection reuse,
@@ -92,13 +66,13 @@ the proposed R6 wording.
   - Further progress on [Proposed Wording].
   - At the Wrocław meeting in November 2024, the following poll was taken in EWG:
 
-> > Poll: [@P2688R3] — Pattern Matching: `match` Expression, we encourage more work
-> > on the language-only paper towards C++26 in the next meeting (note: voting
-> > against this poll does not exclude getting pattern matching in C++29)
-> >
-> >  SF    F   N   A   SA
-> > ----  --- --- --- ----
-> >  17   16   6   1   9
+    > Poll: [@P2688R3] — Pattern Matching: `match` Expression, we encourage more work
+    > on the language-only paper towards C++26 in the next meeting (note: voting
+    > against this poll does not exclude getting pattern matching in C++29)
+    >
+    >  SF    F   N   A   SA
+    > ----  --- --- --- ----
+    >  17   16   6   1   9
 
 ## R2 → R3 {- .unlisted}
   - Required parentheses for the match guard syntax.
@@ -113,11 +87,11 @@ the proposed R6 wording.
   - Added a section on [Lifetime Extension of Match Subject].
   - At the EWG Telecon in October 2024,  the following poll was taken:
 
-> > Poll: [@P2688R2] - Pattern Matching: EWG likes direction of the paper.
-> >
-> >  SF   F   N   A   SA
-> > ---- --- --- --- ----
-> >  13   3   1   0   1
+    > Poll: [@P2688R2] - Pattern Matching: EWG likes direction of the paper.
+    >
+    >  SF   F   N   A   SA
+    > ---- --- --- --- ----
+    >  13   3   1   0   1
 
 ## R1 → R2 {- .unlisted}
   - Gained further [Implementation Experience]
@@ -126,70 +100,110 @@ the proposed R6 wording.
   - Decided against proposing a reflection-based tuple-like and variant-like protocols.
   - At the Tokyo meeting in March 2024, the following poll was taken in EWG:
 
-> > Poll: [@P2688R1] - Pattern Matching: EWG encourages more work on pattern matching, knowing our time is limited.
-> >
-> >  SF   F   N   A   SA
-> > ---- --- --- --- ----
-> >  34   9   0   0   0
+    > Poll: [@P2688R1] - Pattern Matching: EWG encourages more work on pattern matching, knowing our time is limited.
+    >
+    >  SF   F   N   A   SA
+    > ---- --- --- --- ----
+    >  34   9   0   0   0
 
 # Introduction
 
-This paper continues the pattern-matching direction described in [@P2688R0]
-through [@P2688R5]. It introduces a unified `match` expression that can perform
-a single pattern test using the syntax:
+This paper continues the evolution of a composable pattern matching facility for
+C++ centered on the `match` expression. This revision preserves the
+expression-oriented and composable foundation of [@P2688R5], while revising
+how patterns introduce names and simplifying the set of patterns.
+
+[@P2688R5] was considered for C++26 at the February 2025 Hagenberg meeting, but
+did not reach consensus for forwarding to CWG. This revision therefore targets
+C++29. However, it is not merely a retargeting of [@P2688R5].
+
+The principal changes are:
+
+  - `let` patterns are replaced by ordinary declaration syntax.
+  - Generalized alternative-matching syntax `{ ... }` handles values such as
+    pointers, `std::optional`, `std::variant`, `std::expected`, `std::any`,
+    polymorphic types.
+  - Library and user-defined alternative types participate through a single
+    customization point: `std::alternative_traits`.
+  - Dedicated optional and parenthesized patterns are removed.
+  - Non-exhaustive selections and redundant cases are diagnosed as errors.
+
+The primary form is a selection expression:
+
+```cpp
+@*expression*@ match {
+    case @*pattern~1~*@ => @*handler~1~*@;
+    case @*pattern~2~*@ => @*handler~2~*@;
+    ...
+};
+```
+
+Every pattern is applied to a subject. A nested pattern's subject is supplied
+by its parent pattern. A declaration pattern initializes a declaration from
+its subject. A decomposition pattern decomposes its subject into components
+for its nested patterns, and an alternative pattern projects the matching
+alternative of its subject for its nested pattern.
+
+For an exactly matching subject, declaration syntax determines whether to create
+a new object or to initialize a reference (possibly a forwarding reference):
+
+```cpp
+case Widget val
+case const Widget& ref
+case Widget&& rref
+case auto&& fwd
+```
+
+A declaration pattern applies directly to its subject. An alternative pattern
+explicitly enters a runtime layer of an alternative type such as `std::variant`:
+
+```cpp
+std::variant<int, std::string> v;
+
+v match {
+  case { int i } => print(i);
+  case { const std::string& s } => print(s);
+};
+```
+
+Pointers and polymorphic types use built-in language rules. Library and
+user-defined alternative types participate through the proposed
+`std::alternative_traits` customization point.
+
+A Boolean single-pattern match is performed with `match case`:
 
 ```cpp
 @*expression*@ match case @*pattern*@
 ```
 
-as well as the selection of pattern matches using the following syntax:
+Unlike [@P2688R5], this form does not make names declared by the pattern
+available in the surrounding scope.
 
-```cpp
-@*expression*@ match {
-    case @*pattern*@ => @*handler*@
-    /* ... */
-}
-```
-
-A single pattern test yields a Boolean and does not export bindings. A
-binding-producing pattern condition is written:
+A pattern condition that makes declared names available to its controlled
+statement is instead written:
 
 ```cpp
 if (case @*pattern*@ = @*expression*@) {
-  // pattern bindings are available here
+  // names introduced in the pattern are available here
 }
 ```
 
-R6 replaces `let` with declaration patterns. Ordinary declaration syntax
-expresses whether a binding copies, moves, aliases, or forwards its current
-subject:
+R6 proposes five composable pattern forms:
 
-```cpp
-case Widget value
-case const Widget& reference
-case auto&& forwarded
-case std::integral auto integer
-```
+| Pattern | Examples | Meaning |
+|---|---|---|
+| Wildcard | `_` | Matches and ignores its subject. |
+| Value | `42`, `"hello"`, `some_constant` | Compares an expression with its subject. |
+| Declaration or type | `int value`, `const Widget&`, `auto x` | Initializes an ordinary declaration from its subject, or tests whether that initialization would be valid when the identifier is omitted. |
+| Decomposition | `[0, auto y]` | Decomposes its subject and applies nested patterns to its components. |
+| Alternative | `{ int value }`, `{ .error: Error& error }`, `{}` | Selects an advertised alternative and, when present, applies a nested pattern to its projection. |
 
-Braces explicitly enter a runtime projection or refinement layer:
+Decomposition and alternative patterns provide subjects for their nested
+patterns, allowing the five forms to compose recursively.
 
-```cpp
-variant<int, string> value;
-
-value match {
-  case { int integer } => use(integer);
-  case { const string& text } => print(text);
-};
-```
-
-The proposed patterns focus on matching:
-
-1. Values (e.g. `42`, `"hello"`, `compute_value()`)
-2. Product types through structured-binding decomposition (e.g. `pair`,
-   `tuple`, arrays, and aggregates)
-3. Nullable and closed choice types (e.g. pointers, `optional`, `expected`, and
-   `variant`)
-4. Open choices and runtime refinement (e.g. `any` and polymorphic classes)
+This deliberately small set is informed by a survey of real-world usage in
+production C++. The design has also evolved with committee feedback and related
+papers such as [@P2392R3]{.title}, [@P3332R0]{.title}, and [@P3619R1]{.title}.
 
 # Motivation and Scope
 
@@ -853,7 +867,7 @@ return input match -> RecordView {
 };
 ```
 
-The same arm can match a `pair`, `tuple`, array, or user-defined decomposable
+The same case can match a `pair`, `tuple`, array, or user-defined decomposable
 alternative with the required shape.
 
 ## Applying one value pattern across alternatives
@@ -1096,7 +1110,7 @@ value match {
 };
 ```
 
-The first arm dominates in this illustrative example. Its purpose is to show
+The first case dominates in this illustrative example. Its purpose is to show
 that `auto&& whole` binds the `variant`, while `{ auto&& payload }` would bind
 its active alternative.
 
@@ -1139,7 +1153,7 @@ if (case [0, int foo] = @*expr*@) {
 }
 ```
 
-An optional guard can be added to a selection arm:
+An optional guard can be added to a selection case:
 
 ```cpp
 std::pair<int, int> fetch(int id);
@@ -1664,7 +1678,7 @@ const auto& get(const S& s) {
 
 ## Selection expressions
 
-The multi-arm form is:
+The selection form is:
 
 ```cpp
 subject match constexpr(opt) trailing-return-type(opt) {
@@ -1725,7 +1739,7 @@ skipped.
 
 ## Guards
 
-A multi-arm guard is introduced by `if` and requires parentheses. It can
+A selection-case guard is introduced by `if` and requires parentheses. It can
 contain an init-statement and a condition declaration:
 
 ```cpp
@@ -1740,9 +1754,9 @@ value match {
 
 Pattern bindings are visible in the guard. A guard init-statement declaration
 is visible in the guard condition and selected handler. Neither is visible in
-later arms.
+later cases.
 
-Guarded arms do not contribute to exhaustiveness, even when a guard is
+Guarded cases do not contribute to exhaustiveness, even when a guard is
 manifestly `true`. This keeps coverage independent of arbitrary constant
 evaluation and avoids changing exhaustiveness when a guard expression is
 refactored.
@@ -1783,7 +1797,7 @@ position. The design uses these disambiguation rules:
   change an overloaded `operator&&` contained wholly within an earlier ordinary
   expression.
 
-Malformed patterns recover at the arm boundary and suppress follow-on
+Malformed patterns recover at the case boundary and suppress follow-on
 exhaustiveness diagnostics.
 
 ## Handlers
@@ -1886,9 +1900,9 @@ rank: identity, lvalue transformations, qualification adjustment, and function
 pointer conversion. Promotions, conversion-rank standard conversions, and
 user-defined conversions do not make a declaration pattern applicable.
 
-The pattern language is ordered, not overloaded. The first matching arm wins.
+The pattern language is ordered, not overloaded. The first matching case wins.
 Overload ranking is used only to define the permitted conversion category, not
-to reorder arms.
+to reorder cases.
 
 For a closed choice, every written declaration must be applicable to at least
 one alternative unless dependence makes it potentially useful:
@@ -1903,7 +1917,7 @@ value match {
 };
 ```
 
-Qualification adjustment can intentionally make one earlier arm cover several
+Qualification adjustment can intentionally make one earlier case cover several
 alternatives:
 
 ```cpp
@@ -1916,7 +1930,7 @@ pointer match {
 ```
 
 The usefulness diagnostic is the remedy for source-order mistakes; the
-language does not reorder these arms as an overload set would.
+language does not reorder these cases as an overload set would.
 
 ### Applicability versus failed initialization
 
@@ -1926,7 +1940,7 @@ A declaration pattern has three relevant outcomes:
 2. It is applicable and initialization succeeds.
 3. It is applicable, but the selected initialization is ill-formed.
 
-Only the first outcome can omit a dependent semantic arm. The third is an
+Only the first outcome can omit a dependent semantic case. The third is an
 error. This follows overload resolution: after a by-value overload has been
 selected, failure to perform its copy does not retry an ellipsis fallback.
 
@@ -2140,7 +2154,7 @@ Qualification adjustments can likewise make one declaration applicable to
 several alternatives. Usefulness operates on the actual indices and nested
 value coverage, not only on the written type.
 
-`{ auto&& value }` is a generic projected arm. Its declaration, guard, and
+`{ auto&& value }` is a generic projected case. Its declaration, guard, and
 handler are checked separately for every retained projected type.
 
 ## Named and non-projectable states
@@ -2420,8 +2434,8 @@ remainder. Without `has_value`, `{}` is ill-formed.
 
 # Scope and Conditions
 
-Bindings introduced by a source pattern are visible in that arm's guard and
-handler. They are not visible in later arms.
+Names introduced by a source pattern are visible in that case's guard and
+handler. They are not visible in later cases.
 
 A name is introduced immediately for lookup, preserving the R5 rule, but a
 reference from within the same pattern to a name introduced by that pattern is
@@ -2482,7 +2496,7 @@ E match {
 
 The equivalence is not a well-formedness transformation. A non-viable `P`
 makes the single-pattern expression ill-formed, even where a dependent
-multi-arm match could omit that semantic arm.
+selection with multiple cases could omit that semantic case.
 
 This separates two questions:
 
@@ -2495,9 +2509,9 @@ An irrefutable viable pattern always produces `true`, but still evaluates its
 subject and any required projections or declarations. It is not operationally
 equivalent to the unevaluated requirement.
 
-## Dependent multi-arm matching
+## Dependent case matching
 
-A source arm can be inapplicable in one specialization and applicable in
+A source case can be inapplicable in one specialization and applicable in
 another:
 
 ```cpp
@@ -2512,9 +2526,9 @@ int classify(V value) {
 ```
 
 For `variant<int, string>`, the `char` semantic candidate is absent, but the
-source arm remains maybe useful because another specialization can contain
+source case remains maybe useful because another specialization can contain
 `char`. By contrast, a non-dependent `variant<int, string>` with the same
-`char` arm is ill-formed because the arm is not useful.
+`char` case is ill-formed because the case is not useful.
 
 Exhaustiveness is checked for each concrete specialization:
 
@@ -2531,7 +2545,7 @@ static_assert(arity(tuple(1, 2)) == 2);
 
 ## Implicit template regions
 
-A generic projected arm produces one semantic case instantiation for each
+A generic projected case produces one semantic case instantiation for each
 retained projected type:
 
 ```cpp
@@ -2546,7 +2560,7 @@ The declaration, guard, and handler form an implicit template region. Result
 deduction, `decltype`, constraints, local statics, diagnostics, and structured
 binding packs are evaluated in the corresponding semantic instantiation.
 
-An earlier unguarded irrefutable semantic arm closes only its own domain and
+An earlier unguarded irrefutable semantic case closes only its own domain and
 prevents later handlers for that domain from being instantiated:
 
 ```cpp
@@ -2559,11 +2573,11 @@ auto result = value match {
 ```
 
 The second handler is instantiated for `string` and `vector<int>`, not for
-`int`. This is analogous to an overloaded visitor, without turning match arms
+`int`. This is analogous to an overloaded visitor, without turning match cases
 into an overload set.
 
 The foundational instantiation rule uses individual irrefutability, not the
-union of several refutable arms. Usefulness can diagnose a later arm as
+union of several refutable cases. Usefulness can diagnose a later case as
 redundant without retroactively suppressing its handler instantiation based on
 the complete pattern matrix.
 
@@ -2587,7 +2601,7 @@ value match {
 }; // error: redundant case
 ```
 
-Guarded arms are useful but do not contribute coverage because their guards
+Guarded cases are useful but do not contribute coverage because their guards
 can fail.
 
 The implementation follows the Maranget/Rust pattern-matrix model. The
@@ -2647,20 +2661,20 @@ missing value.
   statement, including the `else` path, using the same lifetime-extension
   machinery as condition variables and C++23 range-for.
 
-The match arm is not an invented function-return boundary. A selected
+A selection case is not an invented function-return boundary. A selected
 reference result is analyzed according to the enclosing use of the complete
 match expression.
 
 ## Pattern tests and declarations
 
-Arms are attempted in source order. Within one attempted arm:
+Cases are attempted in source order. Within one attempted case:
 
 1. Refutable child tests run in source order with short-circuiting.
 2. After the complete pattern succeeds, declaration bindings initialize in
    source order.
 3. The guard init-statement and condition are evaluated.
 4. On success, the handler is evaluated.
-5. On guard failure, arm-local declarations are destroyed and matching
+5. On guard failure, case-local declarations are destroyed and matching
    continues.
 
 This prevents an early by-value declaration from moving out of the subject
@@ -2684,7 +2698,7 @@ std::move(value) match {
 };
 ```
 
-The second arm can observe the moved-from subject. This is dangerous but
+The second case can observe the moved-from subject. This is dangerous but
 follows ordinary C++ initialization and RAII; restricting declarations to
 references would remove important ownership-transfer use cases.
 
@@ -2699,8 +2713,8 @@ within one match, including:
 - polymorphic runtime refinement and its adjusted pointer.
 
 Expression comparisons, declaration initialization, and guards occur at each
-source occurrence and are not merged. Operations belonging solely to arms
-after the selected arm are not speculated.
+source occurrence and are not merged. Operations belonging solely to cases
+after the selected case are not speculated.
 
 A failed guard is not a cache barrier. If a guard mutates the subject, a later
 equivalent projection may reuse retained state or recompute it; code that
@@ -2738,7 +2752,7 @@ constexpr auto result(auto value) {
 ```
 
 The assertion is instantiated only for a specialization not closed by an
-earlier unguarded irrefutable arm.
+earlier unguarded irrefutable case.
 
 `match constexpr` requires selected pattern conditions and guards to be
 constant expressions and discards unselected handlers in the style of
@@ -2779,15 +2793,15 @@ to make that form read as `E match case P`, but retains the unified model
 rather than introducing a separate `is` expression with different pattern
 semantics.
 
-## Why arms require `case`
+## Why selection cases require `case`
 
-R5 allowed a pattern to begin an arm directly. Requiring `case` provides a
-stable recovery point, distinguishes arm attributes from declaration
+R5 allowed a pattern to begin a selection case directly. Requiring `case` provides a
+stable recovery point, distinguishes case attributes from declaration
 attributes inside a pattern, makes empty and direct-statement handlers easier
 to parse, and reserves room for the pattern grammar to grow without repeatedly
 reopening the surrounding match grammar.
 
-It also aligns the multi-arm form with `switch` while retaining source-ordered
+It also aligns the selection form with `switch` while retaining source-ordered
 pattern semantics. `default` is provided only as the familiar spelling of an
 unguarded top-level wildcard.
 
@@ -2887,7 +2901,7 @@ value match {
 };
 ```
 
-The first arm dominates in this illustrative example. Its purpose is to show
+The first case dominates in this illustrative example. Its purpose is to show
 that braces, not the declaration's spelling, request choice projection.
 
 Second, declarations use source-ordered first-match semantics rather than
@@ -2904,14 +2918,14 @@ value match {
 ```
 
 If arbitrary conversions were admitted, the `int` declaration could consume a
-`double` and make the second arm dead. R6 instead uses the exact-match rank and
+`double` and make the second case dead. R6 instead uses the exact-match rank and
 lets usefulness analysis diagnose domination among the conversions that
 remain.
 
 Third, by-value declarations are real ownership operations. Given an rvalue
 subject, `auto value` can move; given an lvalue, it copies. `auto&& value` is
 the forwarding spelling. This is familiar C++ even though it means a failed
-guard can leave a later arm observing a moved-from subject.
+guard can leave a later case observing a moved-from subject.
 
 ## Removed R5 pattern forms
 
@@ -2955,19 +2969,19 @@ value match {
 };
 ```
 
-If conversion-ranked initialization were allowed, the first arm could consume
+If conversion-ranked initialization were allowed, the first case could consume
 both alternatives and make the second dead regardless of source intent. R6
 uses source-ordered first match and restricts declaration applicability to
 exact-match conversion rank. Exhaustiveness then diagnoses genuinely useless
-arms.
+cases.
 
 ## Why not one implicit `as` operation
 
 [@P2392R3] places type testing, conversion, and binding behind an `as`
 spelling. That is attractive for simple examples but gives one syntax several
 different jobs. In particular, conversion-based matching over
-`variant<int, double>` can make an `int` arm accept a `double` alternative and
-render a later `double` arm ineffective.
+`variant<int, double>` can make an `int` case accept a `double` alternative and
+render a later `double` case ineffective.
 
 C# declaration patterns are a useful precedent for runtime refinement of an
 object, but C++ additionally has closed generic sum types whose active payload
@@ -3005,10 +3019,10 @@ C++ normally answers the first with `requires` and the second with a Boolean
 expression. R6 follows that separation. This also prevents a typo in a required
 pattern condition from silently selecting `else`.
 
-An explicit `match requires` mode was explored for dependent arms. It makes
+An explicit `match requires` mode was explored for dependent cases. It makes
 structural generic dispatch convenient, but creates two nearly identical match
 forms and does not remove the need to distinguish inapplicability from failure
-of a selected declaration initialization. R6 instead gives dependent multi-arm
+of a selected declaration initialization. R6 instead gives dependent case
 matching its own case-instantiation rules and keeps required single-pattern
 conditions strict.
 
@@ -3027,18 +3041,18 @@ void evaluate(const Operator& op) {
 }
 ```
 
-If `op.kind()` is dependent, R6's multi-arm instantiation model can classify
-the erroneous arm as inapplicable for a specialization whose result is
-`char`. That flexibility is necessary for generic projected arms over a
+If `op.kind()` is dependent, R6's case-instantiation model can classify
+the erroneous case as inapplicable for a specialization whose result is
+`char`. That flexibility is necessary for generic projected cases over a
 dependent choice, but it weakens typo detection. The strict single-pattern
 form and an explicit `requires` expression retain a way to ask the viability
-question. Whether dependent multi-arm matching needs an additional opt-in
+question. Whether dependent case matching needs an additional opt-in
 strict mode remains a design question worth presenting to EWG.
 
 ## Why by-value patterns remain permitted
 
-Reference-only declarations would simplify failed-arm mutation and permit more
-aggressive projection reuse, but would prevent a match arm from naturally
+Reference-only declarations would simplify failed-case mutation and permit more
+aggressive projection reuse, but would prevent a selection case from naturally
 consuming its subject. C++ already exposes moved-from states and does not roll
 back failed control-flow conditions. R6 keeps by-value declarations and makes
 their ordering explicit.
@@ -3066,7 +3080,7 @@ value match {
 It also admits the full condition grammar, including init-statements and
 condition declarations, without inventing another unparenthesized expression
 boundary. The pattern-first direct condition uses a different solution:
-top-level `&&` separates later conditions, so it does not accept an arm-style
+top-level `&&` separates later conditions, so it does not accept a case-style
 trailing guard.
 
 ## Why there is no multi-subject grammar
@@ -3141,8 +3155,8 @@ parenthesize binary subjects.
 ## The `=>` separator
 
 [@P2971R2] proposes an implication operator using the same token. If that work
-is adopted, `=>` should remain the arm separator in the syntactically delimited
-match-arm context. An implication expression can still be used as a pattern by
+is adopted, `=>` should remain the case separator in the syntactically delimited
+match-case context. An implication expression can still be used as a pattern by
 parenthesizing it:
 
 ```cpp
@@ -3199,7 +3213,7 @@ justify another declaration form, so the syntax is reserved for future work.
 
 ### Pattern combinators
 
-Or-patterns can merge arms that have the same behavior:
+Or-patterns can merge cases that have the same behavior:
 
 ```cpp
 direction match {
@@ -5089,7 +5103,7 @@ under `x86-64 clang (pattern matching - P2688)`{.default}.
 
 ## What is implemented
 
-- Parsing and AST representation for match expressions, arms, patterns, and
+- Parsing and AST representation for match expressions, cases, patterns, and
   direct conditions.
 - Declaration, type, value, decomposition, closed/open choice, pointer, and
   braced polymorphic patterns.
@@ -5113,7 +5127,7 @@ precedence. The prototype adds `match` at its selected precedence and decides
 between a selection, `match constexpr`, a trailing return type, and a
 single-pattern test after consuming the contextual keyword.
 
-R6's required `case` gives every arm a reliable recovery point. Inside a
+R6's required `case` gives every case a reliable recovery point. Inside a
 pattern, however, expressions and declarations intentionally share one
 position. The parser uses C++'s existing simple-declaration classifier, with a
 for-range-style declarator whose identifier may be omitted, before falling
@@ -5131,9 +5145,9 @@ terminates the pattern, and direct-condition operands stop at top-level `&&`.
 This is why assignment and logical-or subjects require parentheses in that
 form.
 
-### Source arms and semantic instantiations
+### Source cases and semantic instantiations
 
-One source arm can produce several differently typed semantic instances. The
+One source case can produce several differently typed semantic instances. The
 prototype initially tried to mutate and replay source AST nodes; that model was
 fragile under later tree transformations. It now separates source cases from
 `MatchCaseInstantiation` objects. The standard needs an explicit implicit
@@ -5351,7 +5365,7 @@ The following polls are expected to be split as the design is reviewed:
    P2688R6 toward C++29.
 2. Use declaration patterns for binding and explicit braces for choice
    projection.
-3. Require non-exhaustiveness and redundant arms to be diagnosed as errors.
+3. Require non-exhaustiveness and redundant cases to be diagnosed as errors.
 4. Support the closed and open `alternative_traits` customization model.
 5. Support the strict single-pattern expression and binding-producing direct
    condition forms.
