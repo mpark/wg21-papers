@@ -885,15 +885,15 @@ needs to specify which protocol and decomposition operations may be reused.
 | `P =>` | `case P =>` | Explicit arm boundary |
 | `let x` | `auto&& x`, `T x`, ... | Familiar C++ declaration vocabulary |
 | `T: let x` | `{ T x }` | Make choice projection visible |
+| `T: P` | `{ T: P }` | Retain recursive selection inside the projection boundary |
 | `? let x` | `{ auto&& x }` | One projection model |
 | empty optional via `_` | `{}` | Name the non-projectable state |
 | direct `any` cast pattern | `{ T x }` | Type erasure is an explicit open choice |
 | direct polymorphic declaration | `{ T& x }` | Runtime refinement is explicit |
 | `(P)` pattern | removed | Parentheses retain expression meaning |
 
-The old selector solved composition problems. A future explicit selector may
-still be considered, but the current prototype does not retain the unbraced
-`T: P` form.
+The recursive selector remains available, but only inside braces. Positional
+`{ I: P }` handles duplicate or otherwise indistinguishable alternative types.
 
 # What is implemented
 
@@ -903,6 +903,7 @@ The Clang/libc++ prototype now includes:
 - Declaration and type patterns
 - Braced polymorphic runtime refinement
 - Braced, named, and empty projection patterns
+- Typed recursive and positional projection selectors
 - Closed and open `alternative_traits`
 - Pointer, `optional`, `expected`, `variant`, and `any` models
 - Subject-once evaluation and compatible projection reuse

@@ -52,6 +52,8 @@ declaration               // declaration pattern
 type-pattern              // declaration with its identifier omitted
 [P1, P2, ...]             // decomposition pattern
 { P }                     // runtime projection or refinement
+{ T: P }                  // typed recursive projection or refinement
+{ I: P }                  // positional closed-choice projection
 { .name: P }              // named choice projection
 {}                        // advertised state with no projection
 ```

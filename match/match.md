@@ -39,11 +39,12 @@ highlighting:
     written `default`.
   - Declaration patterns replace `let` bindings. The identifier may be
     omitted, but the declaration is still initialized.
-  - Braces explicitly request choice projection: `{ P }`, `{ .name: P }`, and
-    `{}`. The same braces request built-in polymorphic refinement, so a bare
-    declaration or type pattern remains purely static.
-  - The R5 optional pattern `? P`, alternative selector `T: P`, and
-    parenthesized pattern are removed from the current design.
+  - Braces explicitly request choice projection: `{ P }`, `{ T: P }`,
+    `{ index: P }`, `{ .name: P }`, and `{}`. The same braces request built-in
+    polymorphic refinement, so a bare declaration or type pattern remains
+    purely static.
+  - The R5 optional and parenthesized patterns are removed. Its unbraced
+    `T: P` selector is replaced by the explicit braced form `{ T: P }`.
   - A single-pattern test is written `subject match case P`.
   - Binding-producing conditions use `case P = subject`; range-for additionally
     supports `case P : range` with filtering semantics.
@@ -713,14 +714,11 @@ inspect (cmd) {
 ### This Paper
 ```cpp
 cmd match {
-  case { Quit } => // ...
-  case { const Move& move } => use(move.x, move.y);
-  case { const Write& write } => use(write.s);
-  case { const ChangeColor& change } =>
-    change.c match {
-      case { const Rgb& rgb } => use(rgb.r, rgb.g, rgb.b);
-      case { const Hsv& hsv } => use(hsv.h, hsv.s, hsv.v);
-    };
+  case { Quit: _ } => // ...
+  case { Move: [auto x, auto y] } => use(x, y);
+  case { Write: [auto text] } => use(text);
+  case { ChangeColor: [{ Rgb: [auto r, auto g, auto b] }] } => use(r, g, b);
+  case { ChangeColor: [{ Hsv: [auto h, auto s, auto v] }] } => use(h, s, v);
 };
 ```
 
@@ -728,10 +726,10 @@ cmd match {
 
 Example from [Destructuring Nested Structs and Enums](https://doc.rust-lang.org/book/ch18-03-pattern-syntax.html#destructuring-nested-structs-and-enums) section from Rust documentation.
 
-The nested R6 example is intentionally less compact than the R5 example. R6
-does not currently retain `T: P` as a typed recursive selector. Whether a form
-such as `{ T: P }` should be restored is an open question; the comparison table
-makes that loss of expressiveness visible rather than hiding it.
+R6 retains the recursive operation of the R5 selector but places it inside the
+explicit projection boundary. This permits nominal selection and structural
+matching to compose without making a bare declaration implicitly inspect a
+choice.
 
 \pagebreak
 
@@ -1362,6 +1360,8 @@ void f() {
 ### Alternative Pattern (R6)
 
 > | `{ @*pattern*@ }`
+> | `{ @*type-pattern*@ : @*pattern*@ }`
+> | `{ @*constant-expression*@ : @*pattern*@ }`
 > | `{ . @*identifier*@ : @*pattern*@ }`
 > | `{ . @*identifier*@ }`
 > | `{ }`
@@ -1371,6 +1371,11 @@ For a polymorphic class, a type-directed braced pattern instead performs
 runtime refinement with `dynamic_cast` semantics.
 
 - `{ P }` considers each projectable state and applies `P` to its projection.
+- `{ T: P }` considers each projectable state for which type pattern `T` is
+  applicable, then applies `P` to the selected or refined projection. Repeated
+  alternatives are considered independently.
+- `{ I: P }`, where `I` is an integral constant expression, selects positional
+  state `I` of a closed choice and applies `P` to its projection.
 - `{ .name: P }` selects a named state and applies `P` to its projection.
 - `{ .name }` selects a named non-projectable state.
 - `{}` matches an advertised state for which no projection exists.
@@ -1390,6 +1395,17 @@ expected<int, Error> result;
 result match {
   case { .value: int value } => use(value);
   case { .error: Error& error } => report(error);
+};
+```
+
+```cpp
+variant<int, tuple<int, int>, pair<int, int>> value;
+
+value match {
+  case { int: 0 } => zero();
+  case { int: auto integer } => use(integer);
+  case { tuple<int, int>: [auto x, auto y] } => use_tuple(x, y);
+  case { pair<int, int>: [auto x, auto y] } => use_pair(x, y);
 };
 ```
 
@@ -1414,8 +1430,8 @@ contextually converts to `true` and `*@*subject*@` matches `@*pattern*@`.
 
 ::: note
 This subsection records the R5 `T: P` design and its `try_cast` protocol. R6
-uses [Alternative Pattern (R6)] and declaration patterns. A typed
-recursive selector remains under consideration as an additional pattern.
+uses [Alternative Pattern (R6)] and declaration patterns. Its recursive
+operation is retained by the braced `{ T: P }` form described above.
 :::
 
 > | `@*type-id*@ : @*pattern*@`
@@ -1835,6 +1851,8 @@ Every pattern is interpreted against one current subject:
 - `[P1, P2]` decomposes it and gives each child a component subject;
 - `{ P }` requests a runtime projection or refinement and applies `P` to the
   resulting subject;
+- `{ T: P }` selects or refines a projected type before applying `P`;
+- `{ I: P }` selects positional state `I` of a closed choice;
 - `{ .name: P }` first selects a named state;
 - `_` ignores it without performing projection.
 
@@ -2936,12 +2954,12 @@ The R5 `? P` pattern combined nullable testing and dereference in one dedicated
 spelling. R6 instead models nullable types as choices, so `{ P }` and `{}`
 compose with the same protocol as `variant` and `expected`.
 
-The R5 `T: P` selector made variant selection concise but created a second
-binding language and did not resolve whole-object versus payload matching for
-`auto`. R6's braces make projection explicit and declarations bind the
-resulting current subject. A typed recursive selector may still be useful for
-deeply nested nominal choices, but it should be evaluated as an additional
-composable pattern rather than as the foundation of choice matching.
+The R5 unbraced `T: P` selector made variant selection concise but did not
+resolve whole-object versus payload matching for `auto`. R6 keeps its recursive
+operation as `{ T: P }`: braces make projection explicit, `T` selects or
+refines the projected type, and `P` recursively matches the resulting current
+subject. `{ I: P }` supplies the corresponding positional escape hatch for
+duplicate or otherwise indistinguishable alternative types.
 
 The R5 parenthesized pattern is removed. Parentheses retain their normal role
 for expression patterns and grammar disambiguation.
@@ -3183,7 +3201,6 @@ The following remain strong candidates for later work:
 - static type subjects, including reflection values;
 - named aggregate decomposition such as `[.x: P, .y: Q]`;
 - or-patterns and range patterns;
-- a typed recursive choice selector;
 - whole-value binding combined with a nested pattern;
 - dynamic slice and sequence patterns;
 - a generalized irrefutable declaration such as
@@ -3261,23 +3278,37 @@ choice-state lookup from future member lookup in square brackets.
 ### Typed recursive choice selection
 
 R5's `T: P` could both select a nominal alternative and recursively match its
-payload. R6 can bind the selected value with `{ T value }`, but it cannot yet
-combine that nominal test and an arbitrary child pattern without another
-match:
+payload. R6 retains that operation inside the explicit projection boundary:
 
 ```cpp
 command match {
-  case { ChangeColor change } =>
-    change.color match {
-      case { Rgb rgb } => use(rgb.r, rgb.g, rgb.b);
-      case { Hsv hsv } => use(hsv.h, hsv.s, hsv.v);
-    };
+  case { ChangeColor: [{ Rgb: [auto r, auto g, auto b] }] } =>
+    use_rgb(r, g, b);
+  case { ChangeColor: [{ Hsv: [auto h, auto s, auto v] }] } =>
+    use_hsv(h, s, v);
 };
 ```
 
-A possible future form is `{ T: P }`. It would need to compose with closed
-choice projection, open choices, and polymorphic refinement without restoring
-the whole-object-versus-payload ambiguity that braces resolved.
+For closed choices, a type selector considers each projectable state whose
+projection admits `T`; duplicate matching states produce separate semantic
+case instantiations. For an open choice, `T` supplies the requested cast type.
+For a polymorphic current subject, it requests `dynamic_cast`-equivalent
+refinement before matching `P`.
+
+An expression selector is positional rather than a value test:
+
+```cpp
+variant<int, int> value;
+
+value match {
+  case { 0: auto first } => use_first(first);
+  case { 1: auto second } => use_second(second);
+};
+```
+
+The selector shall be an integral constant expression in range for the closed
+choice, and the selected state shall be projectable. Open choices have no
+positional index selector.
 
 ### Static type subjects
 
@@ -5109,7 +5140,8 @@ under `x86-64 clang (pattern matching - P2688)`{.default}.
 - Parsing and AST representation for match expressions, cases, patterns, and
   direct conditions.
 - Declaration, type, value, decomposition, closed/open choice, pointer, and
-  braced polymorphic patterns.
+  braced polymorphic patterns, including recursive type and positional choice
+  selectors.
 - Dependent semantic case instantiation and implicit template regions.
 - Constant evaluation and runtime code generation.
 - Subject evaluation and lifetime extension.
@@ -5339,23 +5371,22 @@ The following decisions should be explicit before R6 wording is finalized:
    declaration and type patterns, including bit-fields, arrays, and functions.
 2. Finalize the `alternative_traits` names, malformed-specialization behavior,
    header availability, and provider-coherence rules.
-3. Decide whether a typed recursive selector is required for R6 composition.
-4. Finish the implicit template-region model for lookup, captures, local
+3. Finish the implicit template-region model for lookup, captures, local
    statics, diagnostics, and result deduction.
-5. Specify projection ordering and reuse latitude precisely enough for guards
+4. Specify projection ordering and reuse latitude precisely enough for guards
    that mutate or invalidate the subject.
-6. Resolve enumerator policy for `[[maybe_unused]]`, unavailable enumerators,
+5. Resolve enumerator policy for `[[maybe_unused]]`, unavailable enumerators,
    and duplicate values.
-7. Decide whether all direct `while`, C-style `for`, and filtering range-for
+6. Decide whether all direct `while`, C-style `for`, and filtering range-for
    forms belong in the first standard revision.
-8. Determine whether the generalized irrefutable declaration spelling
+7. Determine whether the generalized irrefutable declaration spelling
    `auto case P = E` has sufficient motivating use beyond nested structured
    bindings and `if (case P = E)`.
-9. Complete wording for handlers, unmatched execution, and reference-valued
+8. Complete wording for handlers, unmatched execution, and reference-valued
    results.
-10. Confirm whether `default` justifies a second spelling for an unguarded
+9. Confirm whether `default` justifies a second spelling for an unguarded
     top-level wildcard.
-11. Reconcile wildcard `_`, declaration-pattern placeholder variables, and
+10. Reconcile wildcard `_`, declaration-pattern placeholder variables, and
     unnamed structured-binding packs without implying that their initialization
     behavior is interchangeable.
 

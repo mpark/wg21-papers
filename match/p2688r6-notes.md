@@ -49,7 +49,7 @@ prototype evidence for each item.
 | Area | Current direction | Discussion still needed |
 |---|---|---|
 | Current-subject declarations | A bare declaration pattern binds the current subject using exact-match initialization rules and never performs runtime refinement. | Nail down the exact conversion set, reference and bit-field behavior, arrays/functions, and constraints. |
-| Explicit runtime projection | Braces enter a runtime projection or refinement layer. `{ P }`, `{ .name: P }`, and `{}` represent generic, named, and empty choice states; `{ T& x }` can also request built-in polymorphic refinement. | Decide whether a typed recursive selector is needed and finish wording for cross-casts, pointer adjustment, and open-world hierarchies. |
+| Explicit runtime projection | Braces enter a runtime projection or refinement layer. `{ P }`, `{ T: P }`, `{ I: P }`, `{ .name: P }`, and `{}` represent generic, typed, positional, named, and empty choice operations; `{ T& x }` can also request built-in polymorphic refinement. | Finish selector wording and wording for cross-casts, pointer adjustment, and open-world hierarchies. |
 | `alternative_traits` | The protocol supports closed, open, and named views; raw pointers use equivalent built-in behavior. | Finalize the API, malformed-specialization diagnostics, `noexcept` requirements, header availability, and provider coherence. |
 | Templates | A source arm can produce semantic instantiations for each applicable projected type. An inapplicable pattern may be omitted under the dependent-arm model, but an applicable declaration whose initialization is ill-formed is an error. Impossible, refutable, and irrefutable cases are distinguished. | Specify implicit template-region identity, lookup, captures, statics, diagnostics, dependent usefulness, and the exact applicability boundary. |
 | Evaluation | Evaluate the subject once; use ordinary declaration initialization before a guard; permit equivalent projections to be reused. | Specify projection ordering and retention, mutation and invalidation effects, exceptions, cleanup, and lifetime precisely enough for portable reasoning. |
@@ -164,12 +164,19 @@ The revision-history section should lead with these changes.
   case {}
   ```
 
+- Typed recursive and positional selectors are added:
+
+  ```cpp
+  case { Widget: [auto x, auto y] }
+  case { 0: auto first }
+  ```
+
 - The R5 `? P` optional pattern is removed. Pointer and optional states use
   the same projection model as other choices.
 - The R5 parenthesized pattern is removed. Parentheses retain ordinary
   expression meaning.
-- The R5 unbraced `T: P` alternative selector is removed for now. A typed
-  recursive selector remains an open composition question.
+- The R5 unbraced `T: P` alternative selector moves inside the explicit
+  projection boundary as `{ T: P }`.
 - The single-pattern expression now requires `case`:
 
   ```cpp
@@ -1202,6 +1209,45 @@ The `.name:` spelling is intentionally confined to braces. A bare
 trait first. `.name:` also leaves `[.x: P, .y: Q]` available for future named
 aggregate decomposition without conflating aggregate member names with choice
 state names.
+
+### Typed recursive and positional selectors
+
+`{ T: P }` retains R5's useful nominal-selection-plus-recursion operation while
+making the runtime projection boundary explicit:
+
+```cpp
+variant<int, tuple<int, int>, pair<int, int>> value;
+
+value match {
+  case { int: 0 } => zero();
+  case { tuple<int, int>: [auto x, auto y] } => use_tuple(x, y);
+  case { pair<int, int>: [auto x, auto y] } => use_pair(x, y);
+};
+```
+
+For a closed choice, `T` is checked as a type pattern against each projectable
+state. Every applicable index produces its own semantic case instantiation, so
+repeated alternative types remain distinct for coverage. For an open choice,
+`T` is the requested `try_cast<T>` type. For a polymorphic current subject, it
+requests `dynamic_cast`-equivalent refinement. The child `P` sees the selected
+or refined result as its current subject.
+
+`{ I: P }` selects positional state `I` directly. The prototype requires `I`
+to be an integral constant expression in `[0, size)` and the state to be
+projectable. It is primarily an escape hatch for duplicate types:
+
+```cpp
+variant<int, int> value;
+
+value match {
+  case { 0: auto first } => use_first(first);
+  case { 1: auto second } => use_second(second);
+};
+```
+
+An open choice has no finite positional domain, so it rejects expression
+selectors. `I` is an integral constant expression in `[0, size)`; it is not
+converted through the protocol's discriminator type.
 
 ### Standard models
 
@@ -3073,11 +3119,11 @@ These are design questions, not merely implementation work.
    still apply to later arms.
 9. **Open: enum coverage policy.** Decide the effect of unavailable and
    `[[maybe_unused]]` enumerators.
-10. **Deferred design decision: typed recursive selector.** Decide whether R6
-    needs concise syntax for selecting a projected type and immediately
-    matching it structurally. The R5 operation
-    `ChangeColor: [Rgb: let [r, g, b]]` currently has no direct replacement;
-    `{ Rgb: [auto r, auto g, auto b] }` is only an unimplemented candidate.
+10. **Direction chosen; wording open: recursive and positional selectors.**
+    `{ T: P }` selects or refines a projected type and recursively applies
+    `P`; `{ I: P }` selects projectable state `I` of a closed choice. Specify
+    constrained type patterns, constant-expression conversion, duplicate
+    alternatives, dependent selectors, and diagnostics precisely.
 11. **Paper work: wildcard and identifier `_`.** Update the R5 discussion for
     declaration patterns and C++26 unnamed placeholder variables.
 12. **Implementation direction chosen; wording open: handler and fallthrough
@@ -3132,7 +3178,8 @@ taxonomy.
 - `let` and let-binding grammar.
 - optional pattern `? P`.
 - parenthesized pattern semantics.
-- legacy `T: P` / type-constraint selector wording.
+- legacy unbraced `T: P` / type-constraint selector wording; replace it with
+  the braced selector model.
 - generic ADL `try_cast` behavior for naked declaration patterns.
 - wording that treats non-exhaustiveness as optional diagnostics.
 
@@ -3248,7 +3295,7 @@ The original implementation audit now divides cleanly as follows.
 - the final `alternative_traits` and named-provider coherence contract;
 - the final single-pattern condition syntax;
 - unavailable and `[[maybe_unused]]` enumerator policy;
-- whether a typed recursive projected selector is required;
+- exact typed and positional selector wording;
 - complete wording for handlers, fallthrough, and unmatched execution.
 
 ### Implemented baseline
@@ -3664,7 +3711,6 @@ valid opaque AST. They must not silently erase syntax or crash.
 - dynamic slice/list patterns;
 - direct multi-subject matching;
 - strict full-domain enum exhaustiveness mode;
-- typed recursive projected selectors;
 - reflection-based protocol alternatives.
 
 ## R6 Completion Checklist
