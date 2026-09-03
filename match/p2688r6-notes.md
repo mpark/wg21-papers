@@ -49,7 +49,7 @@ prototype evidence for each item.
 | Area | Current direction | Discussion still needed |
 |---|---|---|
 | Current-subject declarations | A bare declaration pattern binds the current subject using exact-match initialization rules and never performs runtime refinement. | Nail down the exact conversion set, reference and bit-field behavior, arrays/functions, and constraints. |
-| Explicit runtime projection | Braces enter a runtime projection or refinement layer. `{ P }`, `{ T: P }`, `{ I: P }`, `{ .name: P }`, and `{}` represent generic, typed, positional, named, and empty choice operations; `{ T& x }` can also request built-in polymorphic refinement. | Finish selector wording and wording for cross-casts, pointer adjustment, and open-world hierarchies. |
+| Explicit runtime projection | Braces enter a runtime projection or refinement layer. `{ P }`, `{ T: P }`, `{ .[I]: P }`, `{ .[I] }`, `{ .name: P }`, and `{}` represent generic, typed, positional, named, and empty choice operations; `{ T& x }` can also request built-in polymorphic refinement. | Finish selector wording and wording for cross-casts, pointer adjustment, and open-world hierarchies. |
 | `alternative_traits` | The protocol supports closed, open, and named views; raw pointers use equivalent built-in behavior. | Finalize the API, malformed-specialization diagnostics, `noexcept` requirements, header availability, and provider coherence. |
 | Templates | A source arm can produce semantic instantiations for each applicable projected type. An inapplicable pattern may be omitted under the dependent-arm model, but an applicable declaration whose initialization is ill-formed is an error. Impossible, refutable, and irrefutable cases are distinguished. | Specify implicit template-region identity, lookup, captures, statics, diagnostics, dependent usefulness, and the exact applicability boundary. |
 | Evaluation | Evaluate the subject once; use ordinary declaration initialization before a guard; permit equivalent projections to be reused. | Specify projection ordering and retention, mutation and invalidation effects, exceptions, cleanup, and lifetime precisely enough for portable reasoning. |
@@ -168,7 +168,7 @@ The revision-history section should lead with these changes.
 
   ```cpp
   case { Widget: [auto x, auto y] }
-  case { 0: auto first }
+  case { .[0]: auto first }
   ```
 
 - The R5 `? P` optional pattern is removed. Pointer and optional states use
@@ -821,7 +821,8 @@ A bare type-constraint remains unsuitable as a general declaration pattern:
 there is no principled choice between implicit `auto`, implicit `auto&&`, and
 `decltype((subject))`. It is instead supported in the explicitly typed choice
 selector `{ C: P }`. The constraint is applied directly to the declared
-alternative type `alternative_traits<S>::type<I>`, without an inferred
+alternative type reflected by
+`alternative_traits<S>::alternatives[I].info`, without an inferred
 placeholder. The child `P` independently controls projection binding and
 cv/ref behavior.
 
@@ -1224,16 +1225,18 @@ repeated alternative types remain distinct for coverage. For an open choice,
 requests `dynamic_cast`-equivalent refinement. The child `P` sees the selected
 or refined result as its current subject.
 
-`{ I: P }` selects positional state `I` directly. The prototype requires `I`
-to be an integral constant expression in `[0, size)` and the state to be
-projectable. It is primarily an escape hatch for duplicate types:
+`{ .[I]: P }` selects positional state `I` directly. The prototype requires
+`I` to be an integral constant expression in `[0, size)` and the state to be
+projectable. `{ .[I] }` selects the state without requiring a projection. The
+positional forms are primarily an escape hatch for duplicate types and
+metadata-free states:
 
 ```cpp
 variant<int, int> value;
 
 value match {
-  case { 0: auto first } => use_first(first);
-  case { 1: auto second } => use_second(second);
+  case { .[0]: auto first } => use_first(first);
+  case { .[1]: auto second } => use_second(second);
 };
 ```
 
@@ -1257,11 +1260,10 @@ R6 should present these models together:
 value/empty abstraction. Thus both `T` and `E` are projectable, including a
 `void` value projection for `expected<void, E>`.
 
-Raw `void*` does not participate in the built-in pointer projection protocol.
-There is no value projection that can be formed by dereference, and treating
-both null and non-null states as non-projectable would make positional `{}`
-match both. A reusable `alternative_traits<void*>` provider may still be named
-indirectly by another type, but it does not opt raw `void*` into matching.
+Raw `void*` participates in the built-in pointer protocol. Its non-null state
+has projected type `void`, so `{ void }` selects a non-null pointer without
+performing an invalid dereference; `{}` selects the null state. The reusable
+`alternative_traits<void*>` provider has the same behavior.
 
 The valueless variant state is deliberately not given ordinary projection
 syntax. Code that cares about this rare state can match the whole object with
@@ -1312,6 +1314,19 @@ The current prototype protocol has this shape:
 template<class T>
 struct alternative_traits;
 
+struct alternative_info {
+  meta::info info = {};
+  bool empty = false;
+
+  consteval alternative_info() = default;
+
+  consteval alternative_info(meta::info r, bool empty = false)
+    : info(meta::is_type(r) ? r : meta::constant_of(r)), empty(empty) {
+    if (meta::is_type(r) && empty)
+      throw "a typed alternative cannot be empty";
+  }
+};
+
 template<class Provider>
 struct alternative_name {
   using provider = Provider;
@@ -1322,14 +1337,12 @@ struct alternative_name {
 
 template<>
 struct alternative_traits<choice> {
-  static constexpr size_t size = /* number of advertised states */;
+  static constexpr alternative_info alternatives[] = {
+    /* one descriptor per advertised state */
+  };
 
-  // Optional; defaults to true.
-  static constexpr bool is_exhaustive = true;
-
-  template<size_t I>
-    requires /* state I is projectable */
-  using type = /* declared alternative type */;
+  // Required for a closed protocol.
+  static constexpr bool has_residual_states = false;
 
   static constexpr size_t index(choice const&);
 
@@ -1347,11 +1360,24 @@ struct alternative_traits<choice> {
 
 The paper needs to specify these laws:
 
-- `size` advertises `[0, size)`.
-- `type<I>` names the declared alternative type. It is omitted for a
-  non-projectable state and can validly name `void`.
-- State `I` is projectable for a particular subject when both `type<I>` and
-  `Provider::get<I>(subject)` are well-formed.
+- The bound of `alternatives` advertises the states `[0, N)`.
+- `alternatives[I].info`, when non-null, reflects either the declared
+  alternative type or a canonical value for state `I`. A type reflection is
+  used by `{ T: P }` and type-constraint selectors and requires
+  `Provider::get<I>(subject)` to provide a compatible projection. The reflected
+  type can be `void`. A value reflection covers the state and provides its
+  preferred diagnostic witness.
+- `alternatives[I].empty` states that `{}` covers state `I`.
+- The reflection is intrinsically either a type or a value, never both. An empty
+  state cannot have a type selector or a projection. A value selector can also
+  mark an empty state, as for `nullopt`, but a value-selected state cannot have
+  a projection.
+- A state with no selector, empty marker, or projection is still valid and can be selected by
+  index, for example `{ .[0] }`.
+- Projectability is independent of the descriptor properties and is determined
+  by whether `Provider::get<I>(subject)` is well-formed. A metadata-free state
+  can therefore support `{ P }` and `{ .[I]: P }`, while `{ .[I] }` does not
+  require `get<I>`.
 - `index(subject)` identifies the active state. Its result need not be
   `size_t`: a two-state provider can return `bool`, while larger providers
   normally return an unsigned index type.
@@ -1359,14 +1385,18 @@ The paper needs to specify these laws:
   retained or evaluated eagerly within the projection-ordering rules.
 - For an active projectable state, `get<I>(subject)` preserves the subject's
   cv/ref category as appropriate for that provider.
-- `is_exhaustive == false` permits runtime states outside the advertised
+- `has_residual_states == true` permits runtime states outside the advertised
   range. Those states are residual rather than required.
 - A member of `names` is an `alternative_name<Provider>` whose stored `index`
   maps to an advertised state.
 
-The names `alternative_traits`, `is_exhaustive`, and `alternative_name` remain
-provisional. The paper should compare them with naming in existing standard
-traits before wording is frozen.
+The names `alternative_traits` and `alternative_name` remain provisional.
+The required `has_residual_states` member directly describes whether runtime
+states can exist outside the closed protocol's advertised alternatives.
+The protocol and its standard-library specializations exist only in C++29
+when pattern matching is enabled. The implementation asserts that reflection
+is enabled as well; enabling pattern matching implies reflection, while
+enabling reflection alone does not expose this protocol.
 
 ### Named alternative providers
 
@@ -1450,12 +1480,11 @@ template<class T>
 struct alternative_traits<T*> {
   using AT = alternative_traits;
 
-  static constexpr size_t size = 2;
-  static constexpr bool is_exhaustive = true;
-
-  template<size_t I>
-    requires (I == 1 && !is_void_v<T>)
-  using type = T;
+  static constexpr alternative_info alternatives[] = {
+    {meta::reflect_constant(nullptr), /*empty=*/true},
+    ^^T,
+  };
+  static constexpr bool has_residual_states = false;
 
   // Templated because this provider is reused with other nullable subjects.
   static constexpr bool index(auto const& self) noexcept {
@@ -1463,9 +1492,12 @@ struct alternative_traits<T*> {
   }
 
   template<bool HasValue, class Self>
-    requires (HasValue && !is_void_v<T>)
+    requires HasValue
   static constexpr decltype(auto) get(Self&& self) noexcept {
-    return *FWD(self);
+    if constexpr (is_void_v<T>)
+      return;
+    else
+      return *FWD(self);
   }
 
   struct names {
@@ -1474,7 +1506,17 @@ struct alternative_traits<T*> {
 };
 
 template<class T>
-struct alternative_traits<optional<T>> : alternative_traits<T*> {};
+struct alternative_traits<optional<T>> : alternative_traits<T*> {
+  static constexpr alternative_info alternatives[] = {
+    {^^nullopt, /*empty=*/true},
+    ^^T,
+  };
+
+  static constexpr bool index(optional<T> const& value) noexcept {
+    return value.has_value();
+  }
+
+};
 ```
 
 Using `bool` carries the binary discriminator through the provider and allows
@@ -1483,10 +1525,14 @@ direct contextual conversion to `bool`. The generic protocol still numbers
 states, and passing state `0` or `1` as the `get` template argument converts
 to the provider's boolean NTTP.
 
-The pointee constraint is intentional. The inherited nullable view of
-`expected<void, E>` permits `.some` only as a state selector, not
-`.some: void`. The primary expected provider still projects its value state as
-`void`.
+`optional` replaces the pointer provider's descriptors so `nullopt` supplies
+the empty-state witness. An ordinary value pattern such as `0` remains a test
+of the contained value; `nullopt` and `{}` provide equivalent coverage.
+
+For `void*`, the non-null state has projected type `void`, and its `get`
+operation returns `void` without dereferencing. This permits `{ void }` and
+also lets the inherited nullable view of `expected<void, E>` use
+`{ .some: void }`.
 
 Expected advertises two projectable, named states. `T = void` remains a valid
 projection type for the value state:
@@ -1496,12 +1542,8 @@ template<class T, class E>
 struct alternative_traits<expected<T, E>> {
   using AT = alternative_traits;
 
-  static constexpr size_t size = 2;
-  static constexpr bool is_exhaustive = true;
-
-  template<size_t I>
-    requires (I < size)
-  using type = conditional_t<I == 0, T, E>;
+  static constexpr alternative_info alternatives[] = {^^T, ^^E};
+  static constexpr bool has_residual_states = false;
 
   struct names : alternative_traits<T*>::names {
     static constexpr alternative_name<AT> value = 0, error = 1;
@@ -1527,11 +1569,10 @@ Variant is positional and has a residual valueless state:
 ```cpp
 template<class... Types>
 struct alternative_traits<variant<Types...>> {
-  static constexpr size_t size = sizeof...(Types);
-  static constexpr bool is_exhaustive = false;
-
-  template<size_t I>
-  using type = Types...[I];
+  static constexpr alternative_info alternatives[] = {
+    ^^Types...,
+  };
+  static constexpr bool has_residual_states = true;
 
   static constexpr size_t index(variant<Types...> const& value) noexcept {
     return value.index();
@@ -1546,7 +1587,7 @@ struct alternative_traits<variant<Types...>> {
 
 The closed-protocol contract for `get<I>` is:
 
-- Mandates: `I < size`.
+- Mandates: `I < extent(alternatives)`.
 - Preconditions: `index(self) == I`.
 - Returns: the projection for state `I`, preserving the cv-qualification and
   value category of `self` where the projected object permits it.
@@ -1583,16 +1624,20 @@ Boolean conversion and dereference does not adopt the protocol. This avoids
 making the two-state
 exhaustive semantic promise from syntax alone.
 
-If a closed model advertises several non-projectable states, `{}` covers all
-of them.
+If a closed model advertises several states whose descriptors have
+`.empty = true`, `{}` covers all of them. A non-projectable state is not empty
+unless its descriptor says so, but it remains selectable by explicit index.
 
 ### Protocol alternatives explored
 
 The following were explored and should be summarized rather than left as live
 design branches:
 
-- A reflection-valued `projection_type(size_t)` function was attractive but
-  would make this proposal depend on reflection and was not implemented.
+- Separate `type<I>`, `value<I>`, and `empty<I>` members were prototyped first.
+  The current design instead uses one reflection-valued `alternative_info`
+  descriptor per state. This groups state metadata, derives the state count
+  from the array bound, and permits a state with no metadata to remain
+  explicitly index-selectable.
 - Scoped-enum indices could make named states self-describing, but positional
   pack indexing remains natural for `variant`.
 - Freely mixing multiple named views of one type, such as `value/error` with
@@ -3129,7 +3174,7 @@ These are design questions, not merely implementation work.
    `[[maybe_unused]]` enumerators.
 10. **Direction chosen; wording open: recursive and positional selectors.**
     `{ T: P }` selects or refines a projected type and recursively applies
-    `P`; `{ I: P }` selects projectable state `I` of a closed choice. Specify
+    `P`; `{ .[I]: P }` selects projectable state `I` of a closed choice. Specify
     constrained type patterns, constant-expression conversion, duplicate
     alternatives, dependent selectors, and diagnostics precisely.
 11. **Paper work: wildcard and identifier `_`.** Update the R5 discussion for
@@ -3278,7 +3323,8 @@ The original implementation audit now divides cleanly as follows.
 
 1. Reject or correctly serialize match ASTs in PCH and modules.
 2. Represent pattern evaluation, cleanup, and exception edges in the CFG.
-3. Validate and bound closed `alternative_traits::size` before iteration.
+3. Validate the reflected `alternative_traits::alternatives` array and bound
+   its extent before iteration.
 4. Implement match evaluation in the experimental bytecode interpreter, or
    clearly diagnose it as unsupported and rename the misleading tests.
 
@@ -3370,11 +3416,10 @@ before the prototype is described as complete.
    their cleanup and exception edges. For example, a call used as an
    expression pattern is absent from `debug.DumpCFG`. This can make analyzer
    results unsound.
-3. **Malformed closed protocols can hang the compiler.** A negative
-   `alternative_traits<T>::size` is accepted as an integer constant and then
-   limited to `UINT_MAX`; projection discovery attempts billions of states.
-   The implementation must validate representability, non-negativity, and a
-   practical allocation/iteration bound before converting the value.
+3. **Malformed closed protocols require bounded validation.** The descriptor
+   table removes the former negative-`size` path, but the compiler still needs
+   a practical extent limit before allocating metadata or probing every
+   projection.
 4. **The experimental bytecode constant interpreter cannot evaluate match
    expressions.** A basic constexpr match fails under
    `-fexperimental-new-constant-interpreter`. The files named
@@ -3471,7 +3516,7 @@ so duplicate projected types are covered by the regular suite.
   matrices without memoization or a complexity budget. Maranget-style
   usefulness has exponential worst cases; nested products of closed choices
   can therefore become a compile-time denial of service even when each
-  individual `alternative_traits` has a reasonable `size`. Add stress tests,
+  individual `alternative_traits` has a reasonable descriptor count. Add stress tests,
   memoization where profitable, and a controlled complexity diagnostic.
 - Parsing `case P = E` and `E match case P` duplicates specialization,
   binding-pack, scope-transfer, and projection-cache setup. The pattern-first
@@ -3718,7 +3763,6 @@ valid opaque AST. They must not silently erase syntax or crash.
 - dynamic slice/list patterns;
 - direct multi-subject matching;
 - strict full-domain enum exhaustiveness mode;
-- reflection-based protocol alternatives.
 
 ## R6 Completion Checklist
 
@@ -3969,7 +4013,7 @@ constexpr auto f6(const std::variant<int, std::tuple<int, int>, std::pair<int, i
 template <class _Tp>
 struct alternative_traits<optional<_Tp>> {
   static constexpr size_t size = 2;
-  static constexpr bool is_exhaustive = true;
+  static constexpr bool has_residual_states = false;
 
   template <size_t _Ip>
     requires(_Ip == 1)
@@ -3985,14 +4029,18 @@ struct alternative_traits<optional<_Tp>> {
     return *std::forward<_Self>(__self);
   }
 
-  static consteval size_t index_of(nullopt_t) noexcept { return 0; }
+  template <size_t _Ip>
+    requires(_Ip == 0)
+  static constexpr nullopt_t value = nullopt;
+
+  static constexpr size_t index_of(nullopt_t) noexcept { return 0; }
 };
 
 
 template <class... _Types>
 struct alternative_traits<variant<_Types...>> {
   static constexpr size_t size = sizeof...(_Types);
-  static constexpr bool is_exhaustive = true;
+  static constexpr bool has_residual_states = false;
 
   template <size_t _Ip>
   using type = _Types...[_Ip];
@@ -4178,7 +4226,7 @@ static_assert(foo(0) == 42);
 template <class _Tp, class _Ep>
 struct alternative_traits<expected<_Tp, _Ep>> {
   static constexpr size_t size = 2;
-  static constexpr bool is_exhaustive = true;
+  static constexpr bool has_residual_states = false;
 
   struct names {
     enum { value, error };

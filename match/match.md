@@ -40,7 +40,8 @@ highlighting:
   - Declaration patterns replace `let` bindings. The identifier may be
     omitted, but the declaration is still initialized.
   - Braces explicitly request choice projection: `{ P }`, `{ T: P }`,
-    `{ C: P }`, `{ index: P }`, `{ .name: P }`, and `{}`. Here `C` is a
+    `{ C: P }`, `{ .[index]: P }`, `{ .[index] }`, `{ .name: P }`, and `{}`.
+    Here `C` is a
     type-constraint applied to the declared alternative type. The same braces
     request built-in polymorphic refinement, so a bare declaration or type
     pattern remains purely static.
@@ -1847,7 +1848,8 @@ void f() {
 > | `{ @*pattern*@ }`
 > | `{ @*type-pattern*@ : @*pattern*@ }`
 > | `{ @*type-constraint*@ : @*pattern*@ }`
-> | `{ @*constant-expression*@ : @*pattern*@ }`
+> | `{ . [ @*constant-expression*@ ] : @*pattern*@ }`
+> | `{ . [ @*constant-expression*@ ] }`
 > | `{ . @*identifier*@ : @*pattern*@ }`
 > | `{ . @*identifier*@ }`
 > | `{ }`
@@ -1863,8 +1865,9 @@ runtime refinement with `dynamic_cast` semantics.
 - `{ C: P }`, where `C` is a type-constraint, considers each projectable state
   whose declared alternative type satisfies `C`, then applies `P` to its
   projection.
-- `{ I: P }`, where `I` is an integral constant expression, selects positional
-  state `I` of a closed choice and applies `P` to its projection.
+- `{ .[I]: P }`, where `I` is an integral constant expression, selects
+  positional state `I` of a closed choice and applies `P` to its projection.
+- `{ .[I] }` selects positional state `I` without requiring a projection.
 - `{ .name: P }` selects a named state and applies `P` to its projection.
 - `{ .name }` selects a named non-projectable state.
 - `{}` matches an advertised state for which no projection exists.
@@ -2361,7 +2364,7 @@ Every pattern is interpreted against one current subject:
 - `{ T: P }` selects or refines a projected type before applying `P`;
 - `{ C: P }` selects a projected alternative whose declared type satisfies
   type-constraint `C`;
-- `{ I: P }` selects positional state `I` of a closed choice;
+- `{ .[I]: P }` selects positional state `I` of a closed choice;
 - `{ .name: P }` first selects a named state;
 - `_` ignores it without performing projection.
 
@@ -2730,9 +2733,11 @@ pointer match {
 ```
 
 `nullptr` and `nullopt` remain ordinary value patterns on the whole current
-subject. They can test runtime equality, but do not by themselves claim
-coverage of an advertised empty state. `{}` or a named state such as `.none`
-is the state-oriented spelling used by exhaustiveness analysis.
+subject. A closed provider can additionally identify either value as the
+canonical value of an advertised state. In that case the value pattern
+participates in exhaustiveness analysis. The pointer and `optional` models do
+so: `nullptr` and `{}` cover the same pointer state, and `nullopt` and `{}`
+cover the same optional state.
 
 The rare valueless state of `variant` is residual and has no projection syntax.
 Code that cares about it can test the whole object first:
@@ -2769,11 +2774,29 @@ cannot expose an unknown runtime type as one statically typed binding.
 The protocol name and some member names remain provisional. The current design
 has closed and open forms.
 
+The C++29 declarations are available only when pattern matching is enabled.
+The library implementation asserts that reflection is also enabled; in the
+prototype, `-fpattern-matching` implies reflection. Enabling reflection alone
+does not expose `alternative_traits` or its standard-library specializations.
+
 ## Closed indexed protocol
 
 ```cpp
 template<class T>
 struct alternative_traits;
+
+struct alternative_info {
+  meta::info info = {}; // null, a type, or a constant value
+  bool empty = false;
+
+  consteval alternative_info() = default;
+
+  consteval alternative_info(meta::info r, bool empty = false)
+    : info(meta::is_type(r) ? r : meta::constant_of(r)), empty(empty) {
+    if (meta::is_type(r) && empty)
+      throw "a typed alternative cannot be empty";
+  }
+};
 
 template<class Provider>
 struct alternative_name {
@@ -2785,14 +2808,12 @@ struct alternative_name {
 
 template<>
 struct alternative_traits<choice> {
-  static constexpr size_t size = /* advertised states */;
+  static constexpr alternative_info alternatives[] = {
+    /* one descriptor per advertised state */
+  };
 
-  // Optional; defaults to true.
-  static constexpr bool is_exhaustive = true;
-
-  template<auto I>
-    requires /* state I is projectable */
-  using type = /* declared alternative type */;
+  // Required for a closed protocol.
+  static constexpr bool has_residual_states = false;
 
   static constexpr auto index(choice const&) noexcept;
 
@@ -2810,16 +2831,29 @@ struct alternative_traits<choice> {
 
 The protocol laws are:
 
-- `size` advertises a finite state set.
-- `type<I>` names the declared alternative type for each projectable state.
-  Its absence denotes a non-projectable state.
+- The bound of `alternatives` advertises a finite state set. Array element `I`
+  describes state `I`.
+- A non-null `alternatives[I].info` reflects either the declared
+  alternative type or a canonical constant value for state `I`. A type
+  reflection is used by `{ T: P }` and type-constraint selectors and requires
+  `get<I>(subject)` to provide a compatible projection. The reflected type can
+  be `void`. A value reflection covers the whole state and is also the
+  preferred missing-case witness.
+- `alternatives[I].empty` states that `{}` covers state `I`.
+- The reflection cannot simultaneously describe both a type and a value. An empty
+  state cannot have a type selector or a projection. A value selector can also
+  mark an empty state, as for `nullopt`, but a value-selected state cannot have
+  a projection.
 - `index(subject)` identifies the active state and is `noexcept`.
-- State `I` is projectable when both `type<I>` and `get<I>(subject)` are
-  well-formed. `type<I>` may be `void`; an absent `type<I>` denotes a
-  non-projectable state.
+- An advertised state may omit its selector, empty marker, and projection. It remains
+  selectable by an explicit index pattern such as `{ .[0] }`.
+- Projectability is independent of the descriptor properties and is determined
+  by whether `get<I>(subject)` is well-formed. A metadata-free state may
+  therefore support `{ P }` and `{ .[I]: P }`; `{ .[I] }` does not require
+  `get<I>`.
 - `get<I>` has the precondition that `index(subject) == I` and preserves the
   subject's cv/ref category as defined by the provider.
-- `is_exhaustive == false` means runtime states can exist outside the
+- `has_residual_states == true` means runtime states can exist outside the
   advertised set. Those states are residual rather than required.
 - A member of `names` maps source syntax to a provider and one advertised
   state.
@@ -2838,6 +2872,9 @@ implementation detail.
 | `expected<T, E>` | closed named choice | value, error | none |
 | `variant<Ts...>` | closed indexed choice | every declared index | valueless |
 | `any` | open type-indexed choice | empty and unknown non-empty remainder | none |
+| comparison category | closed value choice | every distinct result | none |
+| `chrono::month` | closed value choice | the twelve named months | invalid values |
+| `chrono::weekday` | closed value choice | the seven named weekdays | invalid values |
 
 Raw pointers use built-in semantics. A library `alternative_traits<T*>`
 specialization can mirror that model so explicitly opted-in nullable types,
@@ -2859,21 +2896,23 @@ template<class T>
 struct alternative_traits<T*> {
   using AT = alternative_traits;
 
-  static constexpr size_t size = 2;
-  static constexpr bool is_exhaustive = true;
-
-  template<size_t I>
-    requires (I == 1 && !is_void_v<T>)
-  using type = T;
+  static constexpr alternative_info alternatives[] = {
+    {meta::reflect_constant(nullptr), /*empty=*/true},
+    ^^T,
+  };
+  static constexpr bool has_residual_states = false;
 
   static constexpr bool index(auto const& value) noexcept {
     return value ? true : false;
   }
 
   template<bool HasValue, class Self>
-    requires (HasValue && !is_void_v<T>)
+    requires HasValue
   static constexpr decltype(auto) get(Self&& self) noexcept {
-    return *std::forward<Self>(self);
+    if constexpr (is_void_v<T>)
+      return;
+    else
+      return *std::forward<Self>(self);
   }
 
   struct names {
@@ -2883,14 +2922,28 @@ struct alternative_traits<T*> {
 };
 
 template<class T>
-struct alternative_traits<optional<T>> : alternative_traits<T*> {};
+struct alternative_traits<optional<T>> : alternative_traits<T*> {
+  static constexpr alternative_info alternatives[] = {
+    {^^nullopt, /*empty=*/true},
+    ^^T,
+  };
+
+  static constexpr bool index(optional<T> const& value) noexcept {
+    return value.has_value();
+  }
+};
 ```
 
 The pointer provider's `index` parameter is templated so that an inheriting
-nullable type can reuse its state partition. The `get` return type is formed
-from dereference so that the provider preserves the subject's actual cv/ref
-projection. `void*` does not participate in the built-in pointer model because
-there is no non-null value projection.
+nullable type can reuse its state partition. For non-void pointees, `get`
+forms its return type from dereference and therefore preserves the subject's
+actual cv/ref projection. For `void*`, the non-null state has projected type
+`void`; `{ void }` selects that state without dereferencing the pointer.
+
+`optional` replaces the pointer provider's descriptor table so its empty state
+has the canonical spelling `nullopt`. An ordinary `case 0` remains a test of
+an engaged `optional<int>` containing zero. Its inherited `.some` and `.none`
+names still refer directly to the reusable pointer provider.
 
 Expected advertises two projectable states, including `void` for a successful
 `expected<void, E>`:
@@ -2900,12 +2953,8 @@ template<class T, class E>
 struct alternative_traits<expected<T, E>> {
   using AT = alternative_traits;
 
-  static constexpr size_t size = 2;
-  static constexpr bool is_exhaustive = true;
-
-  template<size_t I>
-    requires (I < size)
-  using type = conditional_t<I == 0, T, E>;
+  static constexpr alternative_info alternatives[] = {^^T, ^^E};
+  static constexpr bool has_residual_states = false;
 
   static constexpr size_t index(expected<T, E> const& value) noexcept {
     return value.has_value() ? 0 : 1;
@@ -2932,11 +2981,10 @@ Variant advertises every declared index and a residual valueless state:
 ```cpp
 template<class... Types>
 struct alternative_traits<variant<Types...>> {
-  static constexpr size_t size = sizeof...(Types);
-  static constexpr bool is_exhaustive = false;
-
-  template<size_t I>
-  using type = Types...[I];
+  static constexpr alternative_info alternatives[] = {
+    ^^Types...,
+  };
+  static constexpr bool has_residual_states = true;
 
   static constexpr size_t index(variant<Types...> const& value) noexcept {
     return value.index();
@@ -3486,7 +3534,7 @@ The R5 unbraced `T: P` selector made variant selection concise but did not
 resolve whole-object versus payload matching for `auto`. R6 keeps its recursive
 operation as `{ T: P }`: braces make projection explicit, `T` selects or
 refines the projected type, and `P` recursively matches the resulting current
-subject. `{ I: P }` supplies the corresponding positional escape hatch for
+subject. `{ .[I]: P }` supplies the corresponding positional escape hatch for
 duplicate or otherwise indistinguishable alternative types.
 
 The R5 parenthesized pattern is removed. Parentheses retain their normal role
@@ -3829,14 +3877,15 @@ An expression selector is positional rather than a value test:
 variant<int, int> value;
 
 value match {
-  case { 0: auto first } => use_first(first);
-  case { 1: auto second } => use_second(second);
+  case { .[0]: auto first } => use_first(first);
+  case { .[1]: auto second } => use_second(second);
 };
 ```
 
 The selector shall be an integral constant expression in range for the closed
-choice, and the selected state shall be projectable. Open choices have no
-positional index selector.
+choice. The selected state must be projectable when `: P` is present; the
+state-only form does not require `get<I>`. Open choices have no positional
+index selector.
 
 ### Static type subjects
 
@@ -3867,15 +3916,15 @@ R6 does not need static type subjects to provide dependent value matching.
 ### Reflection-based customization
 
 Earlier revisions considered replacing tuple-like and variant-like library
-protocols with reflection-based maps. For example, an encapsulated record
-could advertise reflected accessors rather than `tuple_size`, `tuple_element`,
-and `get<I>` specializations. A closed choice could similarly advertise
-reflected alternatives.
+protocols entirely with reflection-based maps. For example, an encapsulated
+record could advertise reflected accessors rather than `tuple_size`,
+`tuple_element`, and `get<I>` specializations.
 
-That direction may eventually produce a more declarative protocol, but it
-should be informed by deployed C++26 reflection practice. R6 therefore uses
-existing structured-binding machinery for products and a conventional traits
-protocol for choices.
+R6 takes a narrower step for choices. `alternative_traits::alternatives` is a
+reflected descriptor table, but runtime discrimination and projection still
+use the conventional `index(subject)` and `get<I>(subject)` operations.
+Products continue to use existing structured-binding machinery. A fully
+reflection-driven projection protocol remains future work.
 
 
 # Design Decisions and Discussions
