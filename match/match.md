@@ -3286,18 +3286,30 @@ std::move(subject) match {
 
 If the second component is not zero, `value` is not initialized.
 
-A failed guard does not roll back side effects:
+A failed guard does not roll back permitted side effects. To avoid implicitly
+consuming the subject before deciding whether an arm is selected, a guarded
+declaration pattern is ill-formed when its initialization invokes a
+non-trivial move constructor:
 
 ```cpp
 std::move(value) match {
-  case Widget first if (false) => unreachable();
-  case Widget second           => observe_moved_from(second);
+  case Widget owned if (owned.satisfies()) => use(std::move(owned)); // error
 };
 ```
 
-The second case can observe the moved-from subject. This is dangerous but
-follows ordinary C++ initialization and RAII; restricting declarations to
-references would remove important ownership-transfer use cases.
+The spelling that tests before consuming is explicit:
+
+```cpp
+std::move(value) match {
+  case Widget&& candidate if (candidate.satisfies()) =>
+      use(Widget(std::move(candidate)));
+};
+```
+
+Copies, reference bindings, scalar initialization, and trivial moves remain
+valid in guarded declaration patterns. Non-trivial moves remain valid in
+unguarded arms, where successful pattern selection cannot continue to a later
+arm.
 
 ## Projection reuse
 
@@ -3521,8 +3533,9 @@ remain.
 
 Third, by-value declarations are real ownership operations. Given an rvalue
 subject, `auto value` can move; given an lvalue, it copies. `auto&& value` is
-the forwarding spelling. This is familiar C++ even though it means a failed
-guard can leave a later case observing a moved-from subject.
+the forwarding spelling. A guarded declaration cannot invoke a non-trivial
+move constructor before testing its guard; use a reference pattern and perform
+the move in the handler after the guard succeeds.
 
 ## Removed R5 pattern forms
 
@@ -3650,9 +3663,10 @@ strict mode remains a design question worth presenting to EWG.
 
 Reference-only declarations would simplify failed-case mutation and permit more
 aggressive projection reuse, but would prevent a selection case from naturally
-consuming its subject. C++ already exposes moved-from states and does not roll
-back failed control-flow conditions. R6 keeps by-value declarations and makes
-their ordering explicit.
+consuming its subject. R6 keeps by-value declarations, while rejecting a
+non-trivial move before a guard because a failed guard would implicitly expose
+the consumed subject to later arms. Trivial moves and copies remain permitted;
+an explicitly consuming guarded arm binds a reference and moves in its handler.
 
 ## Why guards require parentheses
 

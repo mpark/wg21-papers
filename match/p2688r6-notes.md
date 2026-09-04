@@ -52,7 +52,7 @@ prototype evidence for each item.
 | Explicit runtime projection | Braces enter a runtime projection or refinement layer. `{ P }`, `{ T: P }`, `{ .[I]: P }`, `{ .[I] }`, `{ .name: P }`, and `{}` represent generic, typed, positional, named, and empty choice operations; `{ T& x }` can also request built-in polymorphic refinement. | Finish selector wording and wording for cross-casts, pointer adjustment, and open-world hierarchies. |
 | `alternative_traits` | The protocol supports closed, open, and named views; raw pointers use equivalent built-in behavior. | Finalize the API, malformed-specialization diagnostics, `noexcept` requirements, header availability, and provider coherence. |
 | Templates | A source arm can produce semantic instantiations for each applicable projected type. An inapplicable pattern may be omitted under the dependent-arm model, but an applicable declaration whose initialization is ill-formed is an error. Impossible, refutable, and irrefutable cases are distinguished. | Specify implicit template-region identity, lookup, captures, statics, diagnostics, dependent usefulness, and the exact applicability boundary. |
-| Evaluation | Evaluate the subject once; use ordinary declaration initialization before a guard; permit equivalent projections to be reused. | Specify projection ordering and retention, mutation and invalidation effects, exceptions, cleanup, and lifetime precisely enough for portable reasoning. |
+| Evaluation | Evaluate the subject once; use ordinary declaration initialization before a guard, but reject guarded declarations that invoke non-trivial move constructors; permit equivalent projections to be reused. | Specify projection ordering and retention, mutation and invalidation effects, exceptions, cleanup, and lifetime precisely enough for portable reasoning. |
 | Exhaustiveness | Non-exhaustiveness and redundancy are errors. Required and residual domains support enums and valueless variants. | Stabilize the normative usefulness model, dependent behavior, enum attributes, witness quality, and complexity expectations. |
 | Single-pattern conditions | `E match case P` is a strict ordinary Boolean expression without outward bindings. `case P = E` introduces bindings in direct conditions and can participate in a left-to-right `&&` chain, while `case P : range` filters a range-for. All forms require viability. | Decide whether R6 should retain all forms and settle the remaining grammar and irrefutability diagnostics. |
 | Handlers and results | Handlers include expressions, `=> ;`, direct `static_assert`, and jump actions, with `do` integration for statements that yield. | Complete result deduction, fallthrough, unmatched execution, and control-flow wording. |
@@ -2756,15 +2756,21 @@ binding. Contracts-style shallow constification does not solve reference and
 projection invalidation.
 
 R6 therefore uses ordinary declaration initialization before the guard, no
-rollback, and no guard-specific cache barrier.
+rollback, and no guard-specific cache barrier. A guarded declaration is
+ill-formed, however, when its initialization invokes a non-trivial move
+constructor. This prevents a failed guard from implicitly exposing a consumed
+subject to later arms. References, copies, scalar initialization, and trivial
+moves remain valid. Code that intentionally consumes after testing binds a
+reference and moves in the handler.
 
 ### Reference-only declaration patterns
 
 Restricting declaration patterns to references would avoid some repeated-copy
 and move hazards, but would prevent natural ownership transfer, explicit
-copies, and familiar visitor replacements. C++ already permits moved-from
-state to be observed. R6 keeps by-value patterns and should warn for especially
-surprising guarded moves where practical.
+copies, and familiar visitor replacements. R6 keeps by-value patterns and
+permits non-trivial moves in unguarded arms. In guarded arms, only non-trivial
+move construction is rejected; a reference pattern remains the explicit route
+to test first and move in the selected handler.
 
 ### `match requires`
 
@@ -3283,7 +3289,7 @@ The final draft should contain tested examples for:
 - guards with init-statements;
 - dependent viable and discarded arms;
 - forwarding an rvalue alternative;
-- a failed guarded by-value move followed by another arm;
+- accepted guarded trivial moves and rejected guarded non-trivial moves;
 - exhaustive and redundant bool, integer, enum, variant, optional, expected,
   and open-choice matches;
 - void and non-void unmatched behavior;
@@ -3378,7 +3384,7 @@ The prototype implements and has focused tests for:
 - subject-once evaluation, default-argument lifetime extension, retained value
   categories, and match-result lifetime propagation;
 - projection and discriminator reuse;
-- guards with init-statements, guarded-move warnings, null handlers, and direct
+- guards with init-statements, guarded-move errors, null handlers, and direct
   `static_assert` handlers;
 - explicit traversal for dependence, profiling, exception and side-effect
   analysis, lifetime analysis, AST dumping, and the principal CFG paths;
