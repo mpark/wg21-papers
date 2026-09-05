@@ -41,10 +41,11 @@ highlighting:
     omitted, but the declaration is still initialized.
   - Braces explicitly request choice projection: `{ P }`, `{ T: P }`,
     `{ C: P }`, `{ .[index]: P }`, `{ .[index] }`, `{ .name: P }`, and `{}`.
-    Here `C` is a
-    type-constraint applied to the declared alternative type. The same braces
-    request built-in polymorphic refinement, so a bare declaration or type
-    pattern remains purely static.
+    Here `C` is a type-constraint applied to the declared alternative type.
+  - A declaration or type pattern applied directly to a polymorphic class
+    object can perform `dynamic_cast`-equivalent refinement. Pointer
+    declarations remain static; a pointer is first dereferenced through its
+    nullable `{ P }` projection before its object can be refined.
   - The R5 optional and parenthesized patterns are removed. Its unbraced
     `T: P` selector is replaced by the explicit braced form `{ T: P }`.
   - A single-pattern test is written `subject match case P`.
@@ -134,9 +135,13 @@ The principal changes are:
 
   - `let` patterns are replaced by ordinary declaration syntax.
   - Generalized alternative-matching syntax `{ ... }` supports types such as
-    `T*`, `std::optional`, `std::variant`, `std::expected`, `std::any`, and
-    polymorphic types. Library and user-defined alternative types participate
-    through a single customization point: `std::alternative_traits`.
+    `T*`, `std::optional`, `std::variant`, `std::expected`, and `std::any`.
+    Library and user-defined alternative types participate through a single
+    customization point: `std::alternative_traits`.
+  - Declaration-shaped patterns directly refine polymorphic class objects,
+    with `dynamic_cast` semantics. Pointer declarations do not downcast;
+    `{ Derived& }` first projects a non-null base pointer and then refines the
+    resulting object.
   - Dedicated optional and parenthesized patterns are removed.
   - Non-exhaustive and redundant cases are diagnosed as errors.
 
@@ -178,9 +183,10 @@ v match {
 };
 ```
 
-Pointers and polymorphic types use built-in language rules. Library and
-user-defined alternative types participate through the proposed
-`std::alternative_traits` customization point.
+Pointers use a built-in nullable choice rule. Polymorphic class objects use a
+built-in runtime-refinement rule. Library and user-defined alternative types
+participate through the proposed `std::alternative_traits` customization
+point.
 
 A single-pattern test is performed with `match case`:
 
@@ -1112,9 +1118,11 @@ int get_area(const Shape& shape) {
 ```cpp
 int get_area(const Shape& shape) {
   return shape match {
-    case { Circle: const auto& [r] } => 3.14 * r * r;
-    case { Rectangle: const auto& [w, h] } => w * h;
-    case _ => throw UnknownShape{};  // required
+    case const Circle& circle =>
+      3.14 * circle.radius * circle.radius;
+    case const Rectangle& rectangle =>
+      rectangle.width * rectangle.height;
+    case _ => throw UnknownShape{};  // required: the hierarchy is open
   };
 }
 ```
@@ -1582,7 +1590,7 @@ constexpr int x = 42;
 }
 ```
 
-Braces explicitly enter a runtime projection or refinement layer:
+Braces explicitly enter a choice-projection layer:
 
 ```cpp
 variant<int, string> value;
@@ -1598,14 +1606,14 @@ The first case dominates in this illustrative example. Its purpose is to show
 that `auto&& whole` binds the `variant`, while `{ auto&& payload }` would bind
 its active alternative.
 
-The same distinction applies to polymorphic classes:
+Polymorphic class objects instead use declaration-shaped runtime refinement:
 
 ```cpp
 Shape& shape = get_shape();
 
 shape match {
-  case { Circle& refined } => draw(refined); // dynamic_cast
-  case _                   => draw_unknown(shape);
+  case Circle& refined => draw(refined); // dynamic_cast-equivalent refinement
+  case _               => draw_unknown(shape);
 };
 
 Circle circle;
@@ -1614,8 +1622,10 @@ circle match {
 };
 ```
 
-A bare declaration never silently acquires runtime behavior from the static
-type of its subject.
+The declaration is initialized normally when it exactly matches the static
+subject type. Otherwise, a class declaration can refine a polymorphic class
+subject. This context dependence is deliberate and is discussed in
+[Static matching and polymorphic refinement].
 
 On the right of `=>`, R6 supports expressions, a null statement, direct
 `static_assert`, and jump actions. A `do` expression [@P2806R2] provides a
@@ -1855,13 +1865,16 @@ void f() {
 > | `{ }`
 
 For a choice type, braces enter the projection layer advertised by that type.
-For a polymorphic class, a type-directed braced pattern instead performs
-runtime refinement with `dynamic_cast` semantics.
+They do not by themselves request polymorphic refinement. If a projection
+produces a polymorphic class object, an enclosed declaration or type pattern
+can refine that object in the ordinary way.
 
 - `{ P }` considers each projectable state and applies `P` to its projection.
 - `{ T: P }` considers each projectable state for which type pattern `T` is
-  applicable, then applies `P` to the selected or refined projection. Repeated
-  alternatives are considered independently.
+  applicable, then applies `P` to the selected projection. If that projection
+  is itself a polymorphic class object, the type pattern can refine it under
+  the ordinary declaration-pattern rule. Repeated alternatives are considered
+  independently.
 - `{ C: P }`, where `C` is a type-constraint, considers each projectable state
   whose declared alternative type satisfies `C`, then applies `P` to its
   projection.
@@ -2357,11 +2370,12 @@ value match -> int {
 
 Every pattern is interpreted against one current subject:
 
-- a declaration or type pattern applies directly to it;
+- a declaration or type pattern applies directly to it, with built-in runtime
+  refinement when a class target is matched against a polymorphic class
+  object;
 - `[P1, P2]` decomposes it and gives each child a component subject;
-- `{ P }` requests a runtime projection or refinement and applies `P` to the
-  resulting subject;
-- `{ T: P }` selects or refines a projected type before applying `P`;
+- `{ P }` requests choice projection and applies `P` to the resulting subject;
+- `{ T: P }` selects a projected type before applying `P`;
 - `{ C: P }` selects a projected alternative whose declared type satisfies
   type-constraint `C`;
 - `{ .[I]: P }` selects positional state `I` of a closed choice;
@@ -2369,8 +2383,9 @@ Every pattern is interpreted against one current subject:
 - `_` ignores it without performing projection.
 
 This model avoids saying that a declaration sometimes binds an object and
-sometimes implicitly enters a `variant`. The declaration always does the same
-thing; braces change the current subject.
+sometimes implicitly enters a `variant`. Braces change the current subject;
+polymorphic refinement preserves the current object identity while adjusting
+the reference to its derived subobject.
 
 ## Wildcard and value patterns
 
@@ -2430,6 +2445,36 @@ Applicability is restricted to standard conversion sequences with exact-match
 rank: identity, lvalue transformations, qualification adjustment, and function
 pointer conversion. Promotions, conversion-rank standard conversions, and
 user-defined conversions do not make a declaration pattern applicable.
+
+There is one additional class-specific rule. If ordinary exact matching does
+not apply, a declaration or type pattern whose declared type is a class can
+refine a current subject of polymorphic class type. The runtime test and object
+adjustment are those of the corresponding pointer-form `dynamic_cast`; the
+declaration is then initialized from the adjusted object. This rule applies to
+class objects, not pointer declarations:
+
+```cpp
+Shape& shape = get_shape();
+
+shape match {
+  case Circle& circle => draw(circle); // runtime refinement
+  case Shape& other   => draw(other);  // ordinary exact binding
+};
+```
+
+Pointers use ordinary declaration matching. A non-null pointer can be
+projected to its referent with `{ P }`, after which the same class-refinement
+rule composes naturally:
+
+```cpp
+Shape* shape = get_shape_pointer();
+
+shape match {
+  case {}                => no_shape();
+  case { Circle& circle } => draw(circle);
+  case { Shape& other }   => draw(other);
+};
+```
 
 The pattern language is ordered, not overloaded. The first matching case wins.
 Overload ranking is used only to define the permitted conversion category, not
@@ -2576,63 +2621,194 @@ the pack is expanded.
 
 ## Static matching and polymorphic refinement
 
-A bare declaration or type pattern performs only ordinary static exact
-matching. Runtime refinement of a polymorphic class is explicitly requested by
-braces and has the semantics of the corresponding pointer-form
-`dynamic_cast`:
+A declaration or type pattern first attempts ordinary static exact matching.
+If that does not apply and the current subject is a polymorphic class object,
+a class declaration performs runtime refinement with the semantics of the
+corresponding pointer-form `dynamic_cast`:
 
 ```cpp
 void draw(Shape& shape) {
   shape match {
-    case { Circle& circle }       => draw_circle(circle);
-    case { Triangle& triangle }   => draw_triangle(triangle);
-    case { Rectangle& rectangle } => draw_rectangle(rectangle);
-    default                       => draw_unknown(shape);
+    case Circle& circle       => draw_circle(circle);
+    case Triangle& triangle   => draw_triangle(triangle);
+    case Rectangle& rectangle => draw_rectangle(rectangle);
+    default                   => draw_unknown(shape);
   };
 }
 ```
 
 The semantics include public downcasts, virtual inheritance, pointer
 adjustment, and valid cross-casts. A failed cast is a non-match.
-
-Pointer subjects first use the nullable projection model. The projected object
-can then be refined polymorphically:
-
-```cpp
-void inspect(Shape* shape) {
-  shape match {
-    case { Circle& circle } => mutate(&circle);
-    case {}                 => null_shape();
-    default                 => other_shape();
-  };
-}
-```
+After a successful refinement, the declaration's cv/ref spelling has its
+ordinary effect: `Circle&` binds the adjusted object, while `Circle` copies or
+moves from it. Placeholder declarations such as `auto&&` exactly match the
+current `Shape` subject and therefore do not somehow acquire the unknown
+most-derived type.
 
 The relation is open-world. If `Square` derives from `Rectangle` in another
 translation unit or shared library, a `Square` object passed as `Shape&` must
 still match `Rectangle&`. Exact dynamic type or vptr equality is insufficient.
+Listing all currently known derived classes is not exhaustive; a base-class or
+wildcard fallback remains necessary.
 
-The explicit marker prevents one source pattern from changing between static
-matching and runtime refinement as a template is instantiated:
+A generic declaration can consequently be exact in one instantiation and a
+runtime refinement in another:
 
 ```cpp
 void inspect(auto& value) {
   value match {
-    case { Circle& circle } => use(circle);
-    default                 => fallback(value);
+    case Circle& circle => use(circle);
+    default             => fallback(value);
   };
 }
 
 Circle circle;
-inspect(circle);                       // refinement succeeds trivially
+inspect(circle);                       // ordinary exact binding
 inspect(static_cast<Shape&>(circle));  // runtime downcast succeeds
 ```
 
-To require only a static match, omit the braces. Static type subjects are a
-separate future facility; R6 does not propose a syntax such as
-`T match { case int => ... }`.
+This is a real semantic and performance distinction, but it has C++ precedent:
+`typeid(expression)` similarly observes the dynamic type only when the
+expression is a glvalue of polymorphic class type. R6 does not provide an
+in-pattern spelling that demands static-only class matching. A generic API can
+constrain or assert its accepted static subject types; matching a type itself
+remains a possible future facility.
 
-## Why runtime projection and refinement are explicit
+## Why polymorphic refinement is not braced
+
+R6 explored requiring braces for runtime class refinement:
+
+```cpp
+shape match {
+  case { Circle& circle } => draw(circle);
+  case _                  => draw_unknown(shape);
+};
+```
+
+That design had three attractions:
+
+- a bare declaration would always retain ordinary static meaning;
+- braces would visibly mark every runtime operation, including `variant`,
+  `any`, and polymorphic refinement; and
+- a representation changed from a class hierarchy to a closed choice could
+  preserve more arm syntax.
+
+It also suggested a concise recursive selector such as
+`{ Circle: auto&& [x, y] }`, combining refinement and decomposition.
+
+On balance, these benefits were not compelling enough. A derived object is not
+a payload stored inside its base object: it *is* the object denoted by the base
+reference. Declaration-shaped runtime type patterns are familiar from other
+languages, while braces remain essential for `variant` because that type has a
+meaningful generic active-payload operation:
+
+```cpp
+case auto&& whole       // bind the variant
+case { auto&& payload } // bind whichever alternative is active
+```
+
+There is no corresponding statically typed, generic "most-derived object"
+binding for an open class hierarchy. Production examples also overwhelmingly
+bind the refined object and call members or accessors; decomposing a
+polymorphic class immediately after a cast is uncommon and is often impossible
+because of inheritance, private state, or the class's non-aggregate design.
+Changing between a hierarchy and a `variant` is itself uncommon and generally
+changes ownership and API structure, weakening the source-migration argument.
+
+The chosen syntax does give up the direct refinement-and-subpattern form above.
+Code must bind the derived object and inspect its members or apply a nested
+match in the handler. This is a genuine compositional cost, but the surveyed
+code did not show it to be common enough to justify braces on every ordinary
+polymorphic type case.
+
+The strongest argument for braces remains that a small generic-code change can
+introduce a runtime cast. The design accepts that cost in exchange for the more
+direct and familiar object syntax. Implementations and diagnostics should make
+the refinement visible in AST dumps and optimization remarks where useful.
+
+## Why pointer declarations do not refine
+
+Applying the same rule to pointer declarations creates a null-state ambiguity.
+Consider first an ordinary generic pointer match:
+
+```cpp
+template<class T>
+int classify(T* pointer) {
+  return pointer match {
+    case int* value    => value ? 1 : 2;
+    case double* value => value ? 3 : 4;
+    default            => 5;
+  };
+}
+```
+
+The expected operation is static dispatch on `T`. `classify<int>(nullptr)`
+still selects the `int*` case and binds a null pointer.
+
+Now consider `Shape*` matched by `Circle*`. Pointer-form
+`dynamic_cast<Circle*>(pointer)` returns null both when the object is not a
+`Circle` and when `pointer` itself is null. Treating that result as a successful
+pattern would enter a `Circle*` arm with a null pointer; treating it as failure
+would make exact `Shape*` declarations and refining `Circle*` declarations
+behave differently on null despite having the same syntactic form. In a
+dependent `T*` match, the same spelling could also change between static
+selection and nullable runtime testing as `T` changes.
+
+R6 therefore does not perform polymorphic refinement from one pointer type to
+another. Pointer declaration patterns are ordinary exact declaration patterns.
+A non-null pointer is first projected to its referent, after which object
+refinement composes without ambiguity:
+
+```cpp
+void inspect(Shape* shape) {
+  shape match {
+    case {}                  => null_shape();
+    case { Circle& circle }  => draw_circle(circle);
+    case { Square& square }  => draw_square(square);
+    case { Shape& unknown }  => draw_unknown(unknown);
+  };
+}
+```
+
+Here the outer braces are exclusively the pointer's null/non-null projection.
+`Circle&` then refines the projected `Shape&` under the ordinary object rule.
+There is no special pointer-plus-polymorphism operation. With another enclosing
+choice, the syntax reflects both projections:
+
+```cpp
+variant<Shape*, int> value;
+
+value match {
+  case { { Circle& circle } } => draw_circle(circle);
+  case { int integer }        => use(integer);
+  default                     => other();
+};
+```
+
+For a known `Shape*` subject, a bare `Circle*` pattern is not an exact match and
+is ill-formed. In a dependent match it follows the general rules for a
+potentially applicable declaration case; it does not acquire pointer-downcast
+semantics:
+
+```cpp
+template<class T>
+int inspect_pointer(T* pointer) {
+  return pointer match {
+    case Circle* circle => 1;
+    default             => 0;
+  };
+}
+
+Circle circle;
+inspect_pointer(&circle);                    // 1: exact Circle* declaration
+inspect_pointer(static_cast<Shape*>(&circle)); // 0: no pointer downcast
+```
+
+That difference is intentional. Use `{ Circle& }` when the pointee's runtime
+type is the operation being requested. References avoid the underlying null
+ambiguity because a reference always denotes an object.
+
+## Why choice projection is explicit
 
 Without a projection marker, this declaration is ambiguous in intent:
 
@@ -2648,11 +2824,6 @@ declaration meaning: it binds the `variant`. Braces enter the choice:
 case auto&& whole       // the variant object
 case { auto&& payload } // the active payload
 ```
-
-The same marker prevents declaration syntax from changing meaning when a
-template argument changes from a concrete derived type to a polymorphic base.
-`Circle& circle` is always a static declaration pattern;
-`{ Circle& circle }` is the runtime-refining form.
 
 The same rule applies to structure:
 
@@ -2881,6 +3052,10 @@ specialization can mirror that model so explicitly opted-in nullable types,
 such as `optional`, selected smart pointers, and an additional named view of
 `expected`, can reuse it. User-defined pointer-like syntax alone does not opt a
 type into an exhaustive two-state promise.
+
+If a polymorphic class also provides `alternative_traits`, syntax selects the
+operation rather than an implicit precedence rule: a bare class declaration
+performs object refinement, while `{ P }` enters the advertised choice view.
 
 `variant` uses its index and an unchecked projection whose precondition is the
 selected index. `optional` advertises empty index 0 and value index 1.
@@ -3545,10 +3720,10 @@ compose with the same protocol as `variant` and `expected`.
 
 The R5 unbraced `T: P` selector made variant selection concise but did not
 resolve whole-object versus payload matching for `auto`. R6 keeps its recursive
-operation as `{ T: P }`: braces make projection explicit, `T` selects or
-refines the projected type, and `P` recursively matches the resulting current
-subject. `{ .[I]: P }` supplies the corresponding positional escape hatch for
-duplicate or otherwise indistinguishable alternative types.
+operation as `{ T: P }`: braces make projection explicit, `T` selects the
+projected type, and `P` recursively matches the resulting current subject.
+`{ .[I]: P }` supplies the corresponding positional escape hatch for duplicate
+or otherwise indistinguishable alternative types.
 
 The R5 parenthesized pattern is removed. Parentheses retain their normal role
 for expression patterns and grammar disambiguation.
@@ -3602,20 +3777,22 @@ alternative".
 R6 separates the operations instead:
 
 ```cpp
-case int value       // statically bind the current subject
-case { int value }   // runtime-project or refine, then bind the result
+case int value       // bind the current subject
+case { int value }   // project a choice, then bind the result
 ```
 
 The exact-match restriction prevents ordinary numeric conversions from
-silently changing closed-choice dispatch.
+silently changing closed-choice dispatch. A class declaration can additionally
+refine a polymorphic class object, as described in
+[Why polymorphic refinement is not braced]; it still does not enter a choice.
 
 ## Why `any` also requires braces
 
 Allowing a naked `int value` to inspect `any` would make a simple declaration
-silently perform runtime type erasure. Braces make `any`, `variant`,
-user-defined choices, and polymorphic classes share the same visible runtime
-boundary. The mechanism differs by subject: `any` uses its open-choice
-protocol, while polymorphic classes retain `dynamic_cast` semantics.
+silently perform runtime type erasure. Braces make `any`, `variant`, and
+user-defined choices share the same visible choice-projection boundary.
+Polymorphic classes are intentionally different: a derived object retains the
+identity of the base object being matched rather than being a stored payload.
 
 ## Why non-viability is not `false`
 
@@ -3882,8 +4059,8 @@ command match {
 For closed choices, a type selector considers each projectable state whose
 projection admits `T`; duplicate matching states produce separate semantic
 case instantiations. For an open choice, `T` supplies the requested cast type.
-For a polymorphic current subject, it requests `dynamic_cast`-equivalent
-refinement before matching `P`.
+Polymorphic class subjects do not use this selector; a bare declaration or type
+pattern performs their `dynamic_cast`-equivalent refinement.
 
 An expression selector is positional rather than a value test:
 
@@ -4170,18 +4347,21 @@ get_shape() switch {
 };
 ```
 
-While this syntax would work for polymorphic types specifically, there is a
-general desire to unify the handling of sum types like `variant` and
-polymorphic types. For example, [@P2411R0] points out:
+There is a general desire to unify the handling of sum types like `variant`
+and polymorphic types. For example, [@P2411R0] points out:
 
 > The ‘is’-and-‘as’ notation [P2392] is cleaner and more general than the
 [P1371] and successors notation. For example, it eliminates the need to use
 the different notation styles for variant, optional, and any access. Uniform
 notation is the backbone of generic programming.
 
-[@P1371R3] already had uniform notation at least for `variant`, `any` and
-polymorphic types, but regardless, the point is that using syntax that works
-only for polymorphic types but not `variant` is not desired.
+[@P1371R3] already had uniform notation for `variant`, `any`, and polymorphic
+types. R6 nevertheless adopts the declaration-shaped syntax for polymorphic
+objects and retains braces for choices. The operations are not interchangeable:
+`variant` has a generic active payload, whereas an open hierarchy has no
+statically typed generic most-derived value. [Why polymorphic refinement is not
+braced] records the tradeoff and the pointer cases that ultimately motivated
+the distinction.
 
 **Question 3**: Initialization? Conversions? First-match? Best-match?
 
@@ -5731,7 +5911,7 @@ under `x86-64 clang (pattern matching - P2688)`{.default}.
 - Parsing and AST representation for match expressions, cases, patterns, and
   pattern conditions.
 - Declaration, type, value, decomposition, closed/open choice, pointer, and
-  braced polymorphic patterns, including recursive type and positional choice
+  polymorphic object patterns, including recursive type and positional choice
   selectors.
 - Dependent semantic case instantiation and implicit template regions.
 - Constant evaluation and runtime code generation.
@@ -5806,9 +5986,9 @@ optimization. A dedicated decision-DAG lowering remains future work.
 
 ### Dynamic class matching
 
-Braced polymorphic refinement must retain the semantics of an ordered sequence
-of `dynamic_cast` refinements, including open-world derived classes and pointer
-adjustment. The
+Polymorphic declaration patterns must retain the semantics of an ordered
+sequence of `dynamic_cast` refinements, including open-world derived classes
+and pointer adjustment. The
 compiler can nevertheless common repeated targets, derive base matches from a
 successful more-derived result, use final-class fast paths, and employ LTO or
 profile-guided caches while preserving that relation.
@@ -5824,8 +6004,6 @@ identity for discriminators from cache identity for selected projections.
 ## Known implementation gaps
 
 - Polymorphic refinement does not yet implement every valid cross-cast.
-- The precedence for a class that is both polymorphic and an
-  `alternative_traits` model still needs a final design rule.
 - Modules and complete tooling support remain deferred.
 - Some direct loop conditions that require case instantiation are still more
   restricted than `if`.
@@ -5960,24 +6138,27 @@ The following decisions should be explicit before R6 wording is finalized:
 
 1. Confirm the precise exact-match conversion and reference-binding rules for
    declaration and type patterns, including bit-fields, arrays, and functions.
-2. Finalize the `alternative_traits` names, malformed-specialization behavior,
+2. Confirm declaration-shaped polymorphic object refinement, the exclusion of
+   pointer-to-pointer refinement, and the `{ Derived& }` nullable-pointer
+   composition described above.
+3. Finalize the `alternative_traits` names, malformed-specialization behavior,
    header availability, and provider-coherence rules.
-3. Finish the implicit template-region model for lookup, captures, local
+4. Finish the implicit template-region model for lookup, captures, local
    statics, diagnostics, and result deduction.
-4. Specify projection ordering and reuse latitude precisely enough for guards
+5. Specify projection ordering and reuse latitude precisely enough for guards
    that mutate or invalidate the subject.
-5. Resolve enumerator policy for `[[maybe_unused]]`, unavailable enumerators,
+6. Resolve enumerator policy for `[[maybe_unused]]`, unavailable enumerators,
    and duplicate values.
-6. Decide whether all direct `while`, C-style `for`, and filtering range-for
+7. Decide whether all direct `while`, C-style `for`, and filtering range-for
    forms belong in the first standard revision.
-7. Determine whether the generalized irrefutable declaration spelling
+8. Determine whether the generalized irrefutable declaration spelling
    `auto case P = E` has sufficient motivating use beyond nested structured
    bindings and `if (case P = E)`.
-8. Complete wording for handlers, unmatched execution, and reference-valued
+9. Complete wording for handlers, unmatched execution, and reference-valued
    results.
-9. Confirm whether `default` justifies a second spelling for an unguarded
+10. Confirm whether `default` justifies a second spelling for an unguarded
     top-level wildcard.
-10. Reconcile wildcard `_`, declaration-pattern placeholder variables, and
+11. Reconcile wildcard `_`, declaration-pattern placeholder variables, and
     unnamed structured-binding packs without implying that their initialization
     behavior is interchangeable.
 
@@ -5990,9 +6171,11 @@ The following polls are expected to be split as the design is reviewed:
    P2688R6 toward C++29.
 2. Use declaration patterns for binding and explicit braces for choice
    projection.
-3. Require non-exhaustiveness and redundant cases to be diagnosed as errors.
-4. Support the closed and open `alternative_traits` customization model.
-5. Support single-pattern tests and pattern conditions.
+3. Permit declaration-shaped runtime refinement of polymorphic class objects,
+   but not pointer-to-pointer refinement.
+4. Require non-exhaustiveness and redundant cases to be diagnosed as errors.
+5. Support the closed and open `alternative_traits` customization model.
+6. Support single-pattern tests and pattern conditions.
 
 
 # Proposed Wording
