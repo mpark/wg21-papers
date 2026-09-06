@@ -19,9 +19,10 @@ highlighting:
   - Prior to the Hagenberg meeting in January 2025, further implementation
     work was completed.
     - Runtime code generation was fully implemented by Bruno Cardoso Lopes.
-    - Handling of `match` expressions in dependent contexts
-    - Parsing of `@*type-constraint*@: @*pattern*@` syntax
-    - `try_cast` protocol for the `@*type-id*@: @*pattern*@` alternative pattern.
+    - `match` expressions were implemented in dependent contexts.
+    - Parsing was added for `@*type-constraint*@: @*pattern*@`.
+    - A `try_cast` protocol was added for the
+      `@*type-id*@: @*pattern*@` alternative pattern.
   - At the Hagenberg meeting in February 2025, the following poll was taken in EWG:
 
     > Poll: [@P2688R5] - Pattern Matching: `match` Expression: forward to CWG
@@ -46,7 +47,7 @@ highlighting:
     object can perform `dynamic_cast`-equivalent refinement. Pointer
     declarations remain static; a pointer is first dereferenced through its
     nullable `{ P }` projection before its object can be refined.
-  - The R5 optional and parenthesized patterns are removed. Its unbraced
+  - The R5 optional and parenthesized patterns are removed. The unbraced
     `T: P` selector is replaced by the explicit braced form `{ T: P }`.
   - A single-pattern test is written `subject match case P`.
   - Pattern conditions use `case P = subject`; range-for additionally
@@ -122,16 +123,15 @@ highlighting:
 
 # Introduction
 
-This paper continues the evolution of a composable pattern-matching facility for
-C++ centered on the `match` expression. This revision preserves the
-expression-oriented and composable foundation of [@P2688R5], while revising
-how patterns introduce names and simplifying the set of patterns.
+This paper is the next revision of [@P2688R5]. It continues to propose a single
+`match` expression with composable patterns, but changes how patterns introduce
+names and how types such as `variant`, `optional`, and `any` are matched.
 
 [@P2688R5] was considered for C++26 at the February 2025 Hagenberg meeting, but
 did not reach consensus for forwarding to CWG. This revision therefore targets
-C++29. However, it is not merely a retargeting of [@P2688R5].
+C++29. It is not just a retargeting of R5.
 
-The principal changes are:
+The main changes are:
 
   - `let` patterns are replaced by ordinary declaration syntax.
   - Generalized alternative-matching syntax `{ ... }` supports types such as
@@ -145,7 +145,7 @@ The principal changes are:
   - Dedicated optional and parenthesized patterns are removed.
   - Non-exhaustive and redundant cases are diagnosed as errors.
 
-The primary form is a selection expression:
+The main form is a selection expression:
 
 ```cpp
 @*expression*@ match {
@@ -155,14 +155,15 @@ The primary form is a selection expression:
 };
 ```
 
-Every pattern is applied to a subject. A nested pattern's subject is supplied
-by its enclosing pattern. A declaration pattern initializes a declaration from
-its subject. A decomposition pattern supplies components as subjects to nested
-patterns, while an alternative pattern selects an alternative and, when present,
-supplies it as the subject of a nested pattern.
+Every pattern is matched against a subject. Nested patterns get their subjects
+from the enclosing pattern. A declaration pattern initializes a declaration
+from its subject. A decomposition pattern gives each nested pattern one of the
+components. An alternative pattern selects an alternative and, if that
+alternative has a value, gives the value to its nested pattern.
 
-For an exactly matching subject, declaration syntax determines whether to create
-a new object or to initialize a reference (possibly a forwarding reference):
+When ordinary declaration matching applies, the declaration syntax determines
+whether to create a new object or initialize a reference (possibly a forwarding
+reference):
 
 ```cpp
 case Widget val
@@ -171,8 +172,8 @@ case Widget&& rref
 case auto&& fwd
 ```
 
-A declaration pattern applies directly to its subject. An alternative pattern
-explicitly enters a runtime layer of an alternative type such as `std::variant`:
+A declaration pattern applies directly to its subject. Braces are used to look
+inside an alternative type such as `std::variant`:
 
 ```cpp
 std::variant<int, std::string> v;
@@ -206,36 +207,35 @@ if (case @*pattern*@ = @*expression*@) {
 }
 ```
 
-R6 proposes five composable pattern forms:
+This paper proposes five composable pattern forms:
 
 | Pattern | Examples | Meaning |
 |---|---|---|
 | Wildcard | `_` | Matches and ignores its subject. |
 | Value | `42`, `"hello"`, `some_constant` | Compares an expression with its subject. |
-| Declaration or type | `int value`, `const Widget&`, `auto x` | Initializes an object or reference from an exactly matching subject; the identifier may be omitted. |
+| Declaration or type | `int value`, `const Widget&`, `auto x` | Initializes an object or reference using exact-match conversions; the identifier may be omitted. |
 | Decomposition | `[0, auto y]` | Decomposes its subject and applies nested patterns to its components. |
 | Alternative | `{ int value }`, `{ .error: Error& error }`, `{}` | Selects an advertised alternative and, when present, applies a nested pattern to its projection. |
 
-Decomposition and alternative patterns provide subjects for their nested
-patterns, allowing the five forms to compose recursively.
+Decomposition and alternative patterns provide subjects for nested patterns.
+This is what allows the five forms to compose.
 
-This deliberately small set is informed by a survey of real-world usage in
-production C++. The design has also evolved with committee feedback and related
-papers such as [@P2392R3]{.title}, [@P3332R0]{.title}, and [@P3619R1]{.title}.
+The list is intentionally small. It is based on implementation experience,
+existing C++ code, committee feedback, and related papers such as
+[@P2392R3]{.title}, [@P3332R0]{.title}, and [@P3619R1]{.title}.
 
 # Motivation and Scope
 
-C++ already provides many of the operations with which programmers manually
-assemble pattern matching. This is typically done by combining `switch` and
-`if` statements, structured-binding declarations, `std::visit` with overloaded
-lambdas or `if constexpr`, and chains of `dynamic_cast`.
+C++ already has most of the individual operations needed for pattern matching.
+Today, we combine `switch` and `if` statements, structured bindings,
+`std::visit` with overloaded lambdas or `if constexpr`, and chains of
+`dynamic_cast`.
 
-Pattern matching offers a mechanism to compose these operations in a form that
-visually describes the shape of the value being matched. This reduces the
-scaffolding needed to tease values apart and keeps the operation being expressed
-at the center of the code.
+The goal is to compose these operations in one place, in a form that describes
+the value being matched. The examples in this paper show where this is useful,
+and also a few places where the existing C++ is already just as clear.
 
-The driving motivations for the changes in this revision are:
+The goals of this revision are:
 
   1. Make pattern matching feel natural in C++ by using ordinary expressions and
      declarations instead of dedicated syntax such as `let` and `? @*pattern*@`.
@@ -244,7 +244,7 @@ The driving motivations for the changes in this revision are:
   3. Improve safety by requiring diagnostics for non-exhaustive selections and
      redundant cases.
 
-R6 also preserves the following established design decisions from earlier EWG
+This paper also preserves the following decisions from earlier EWG
 discussions:
 
   - Patterns compose recursively rather than forming a chain of separate
@@ -258,18 +258,16 @@ discussions:
     identifier should not silently declare or shadow a variable merely because
     it appears in a pattern.
 
-[@P2688R5] used `let` to make name introduction explicit. R6 retains that
+[@P2688R5] used `let` to make name introduction explicit. This paper retains that
 distinction between declarations and expressions while using ordinary
 declaration syntax to express type, ownership, references, and forwarding.
 A bare identifier remains an expression that refers to an existing name.
 
-R6 covers the `match` selection expression, single-pattern tests, and pattern
-conditions. It specifies the five pattern forms described in
-the introduction and their composition over product types, nullable types,
-closed and open alternative types, and polymorphic types. It also specifies
-participation by user-defined alternative types through `std::alternative_traits`
-and the behavior of patterns with respect to templates, evaluation, lifetime,
-exhaustiveness, and usefulness.
+This paper covers the `match` selection expression, single-pattern tests, and
+pattern conditions. It specifies the five pattern forms described in the
+introduction and how they compose over product types, nullable types, closed
+and open alternative types, and polymorphic types. User-defined alternative
+types participate through `std::alternative_traits`.
 
 Predicates, extractors, range patterns, named-member decomposition, matching
 types themselves as subjects, pattern combinators such as `and` and `or`, and
@@ -277,20 +275,20 @@ multiple-subject matching are deferred to future work.
 
 # Examples from Real-World C++
 
-To evaluate the design against production code, we surveyed pinned revisions
-of [Chromium](https://github.com/chromium/chromium/tree/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5)
-and [LLVM](https://github.com/llvm/llvm-project/tree/52a463254a82be0bcd75f0b7cbfe4728e31c1b26).
-The Chromium corpus covered approximately 13.29 million lines in 72,503
-non-test source files; the LLVM corpus covered approximately 6.50 million lines
-in 12,366 non-test source files. The examples below are selected to illustrate
-distinct capabilities rather than every site that could be rewritten. The
-rewrites are illustrative and have not been submitted to the respective
-projects.
+We looked through pinned revisions of
+[Chromium](https://github.com/chromium/chromium/tree/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5)
+and [LLVM](https://github.com/llvm/llvm-project/tree/52a463254a82be0bcd75f0b7cbfe4728e31c1b26)
+to see what pattern matching code looks like in practice. This covered about
+13.29 million lines in 72,503 non-test Chromium files and 6.50 million lines in
+12,366 non-test LLVM files.
 
-## Basic examples
+The examples below were picked to show different parts of the design. They are
+not meant to suggest that every `visit`, `if`, or `switch` should be rewritten,
+and the rewrites have not been submitted to those projects.
 
-Before considering larger source examples, the following small example
-isolates a recurring operation.
+## Basic Examples
+
+Let's start with a few small examples.
 
 ### Nullable alternatives
 
@@ -346,10 +344,10 @@ return PropertyCache::GetAs<Window>(value) match {
 
 :::
 
-These are intentionally small examples. They validate the common `{ P }` and
-`{}` vocabulary, even though the existing tests are already concise.
+The existing code is already concise. These examples mainly show that `{ P }`
+and `{}` work the same way for `optional` and pointer-like types.
 
-## Closed alternative dispatch
+## Closed Alternative Dispatch
 
 Chromium commonly uses `absl::Overload` to construct a visitor with one lambda
 for each alternative. The survey found 284 such calls. A compact example is
@@ -378,8 +376,8 @@ return status_variant_ match {
 
 :::
 
-The result is only modestly shorter, but the alternative selection and
-declarations are visible without constructing an overload object. A larger
+This is only modestly shorter, but the alternatives and their declarations are
+visible without constructing an overload object. A larger
 [WebNN model-editor example](https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/services/webnn/ort/model_editor.cc#L223-L270)
 contains six explicit overloads with the same structure.
 
@@ -429,11 +427,11 @@ return artifact match -> llvm::Error {
 
 :::
 
-The alternative patterns perform selection, and their nested declaration
-patterns perform initialization directly. Required exhaustiveness replaces the
-manually maintained assertion in the visitor's final branch.
+The alternative patterns perform the selection and the declarations perform
+the initialization. Exhaustiveness checking replaces the manually maintained
+assertion in the final branch.
 
-## Value patterns within an alternative
+## Value Patterns Within an Alternative
 
 Chromium's `OverlayLayerId::ToString` uses a generic visitor, recovers the
 active type with `decltype`, and then performs a nested value switch
@@ -493,12 +491,11 @@ impl_ match {
 
 :::
 
-Here value patterns distinguish values of one projected alternative, while
-declaration patterns initialize objects or references from the remaining
-alternatives. The selection no longer needs a visitor whose first operation is
-another dispatch.
+Here the value patterns match values within one alternative, and the
+declaration patterns bind the other alternatives. We no longer need a visitor
+whose first operation is another dispatch.
 
-## One value pattern across alternatives
+## One Value Pattern Across Alternatives
 
 The following example is representative of numeric telemetry stored in a
 closed alternative type:
@@ -526,10 +523,10 @@ return ranges::all_of(metrics, [](const auto& item) {
 });
 ```
 
-This is an important separation of concerns: the braces request projection,
-while the nested pattern independently describes what must match.
+The braces project the alternative, and `0` independently describes what must
+match. This is one of the important reasons these need to be separate patterns.
 
-## Named result alternatives
+## Named Result Alternatives
 
 Chromium uses `base::expected` extensively. Session construction tests each
 result, projects either its value or error, and may return from the enclosing
@@ -568,7 +565,7 @@ for (const auto& cred : params.credentials) {
 :::
 
 Named alternatives preserve the distinction between value and error even when
-their types are identical. The handler can also return directly from the
+the two types are the same. The handler can also return directly from the
 enclosing function rather than from a visitor lambda.
 
 ## Pattern conditions
@@ -596,11 +593,10 @@ if (case { const APInt& size } = getAllocSize(call, TLI) &&
 
 :::
 
-The second computation depends on a name introduced by the first. Conjoined
-pattern conditions express that dependency without adding another level of
-control flow.
+The second computation needs the name introduced by the first. Conjoined
+pattern conditions express this without adding another level of control flow.
 
-## Product and value matching
+## Product and Value Matching
 
 LLVM's X86 intrinsic upgrader contains a decision table over vector width,
 element width, and whether the element type is floating point
@@ -641,11 +637,11 @@ tuple{vectorWidth, elementWidth, isFloat} match {
 
 :::
 
-The product pattern turns a nested Boolean decision into a table whose
-dimensions are visible in each case. Existing product types provide the subject
-without requiring a separate multiple-subject grammar.
+The product pattern turns the `if` chain into a table where all three inputs
+are visible in every case. `tuple` provides the subject, so we do not need a
+separate syntax for matching multiple subjects.
 
-## Recursive composition and enclosing control flow
+## Recursive Composition and Enclosing Control Flow
 
 Chromium's HLS parser handles a parse result, distinguishes a line-item
 alternative, applies further value tests, and may `break`, `continue`, or
@@ -698,11 +694,11 @@ while (true) {
 
 :::
 
-The example is not merely a shorter spelling for an isolated test. Named
-result states, closed alternatives, guards, and enclosing control flow compose
-in one selection without nested visitors or status variables.
+This example puts named result states, a nested `variant`, guards, and
+enclosing control flow in one place. It is more than a shorter spelling for one
+of the individual tests.
 
-## Open runtime refinement
+## Open Runtime Refinement
 
 Chromium's Blink renderer uses its own `DynamicTo<T>` protocol instead of C++
 RTTI. CSS pseudo-class handling contains a five-way ordered refinement
@@ -747,7 +743,7 @@ executable C++ `dynamic_cast` expressions. Supporting open refinement therefore
 requires an explicit customization path rather than special treatment only for
 C++ RTTI.
 
-## Where `match` is not automatically clearer
+## Where `match` Is Not Automatically Clearer
 
 Not every existing dispatch benefits materially. Chromium contains 99 visitors
 that apply one generic operation to every alternative. For example, its paint
@@ -768,9 +764,9 @@ const PaintOp* get() const {
 }
 ```
 
-The strongest gains occur where existing C++ separates testing, projection,
-initialization, and control flow across several constructs, not where a visitor
-already applies one uniform operation.
+The biggest improvements are in code where testing, accessing the value,
+binding names, and control flow are currently spread across several constructs.
+A visitor that already applies one uniform operation is often fine as-is.
 
 # Comparison Tables
 
@@ -1218,19 +1214,20 @@ cmd match {
 
 :::
 
-Example from [Destructuring Nested Structs and Enums](https://doc.rust-lang.org/book/ch18-03-pattern-syntax.html#destructuring-nested-structs-and-enums) section from Rust documentation.
+This example is adapted from
+[Destructuring Nested Structs and Enums](https://doc.rust-lang.org/book/ch18-03-pattern-syntax.html#destructuring-nested-structs-and-enums)
+in the Rust documentation.
 
-R6 retains the recursive operation of the R5 selector but places it inside the
-explicit projection boundary. This permits nominal selection and structural
-matching to compose without making a bare declaration implicitly inspect a
-choice.
+This paper retains the recursive operation of the R5 selector, but places it
+inside braces. This allows type selection and structural matching to compose
+without making a bare declaration look inside a choice.
 
 \pagebreak
 
 # Evidence from Existing C++
 
-R6 is informed by a broad, non-exhaustive survey of large production C++
-codebases. The recurring forms were:
+The examples above come from a larger, non-exhaustive survey of production C++.
+The same forms showed up repeatedly:
 
 | Existing form | Operation being expressed |
 |---|---|
@@ -1242,11 +1239,12 @@ codebases. The recurring forms were:
 | Generic visitor plus an inner value test | Apply one pattern across alternatives |
 | Nested tests over tuple members | Compose type, value, and structure tests |
 
-The dominant variant use case binds a concrete payload type. Generic payload
-handling and structural matching across alternatives occur less often, but are
-important capabilities for a language with closed generic sum types.
+Most `variant` code binds a concrete alternative. Handling an alternative
+generically and matching the same structure across several alternatives are
+less common, but both show up in real code and are important for a C++ sum
+type.
 
-## Values and enums
+## Values and Enums
 
 The smallest use case remains a direct replacement for a value `switch`:
 
@@ -1272,14 +1270,14 @@ value match {
 };
 ```
 
-Unlike `switch`, the same syntax composes with class values, projections, and
-decomposition. Unlike a visitor, it retains source-ordered value coverage and
-supports exhaustiveness diagnostics.
+Unlike `switch`, the patterns can be nested inside decomposition and choice
+patterns. Unlike a visitor, the cases remain ordered and can be checked for
+exhaustiveness.
 
-## Replacing visitor ceremony
+## Replacing Visitor Ceremony
 
-The following example is representative of code that normalizes several
-variant alternatives into one result type:
+The following is typical code that turns several variant alternatives into one
+result type:
 
 ```cpp
 return std::visit(
@@ -1318,11 +1316,11 @@ return std::move(input) match -> ResultValue {
 };
 ```
 
-The braces say that these declarations bind projected payloads. The final
-declaration is instantiated for every projected type not handled earlier and
-preserves the payload's value category.
+The braces say to match the active alternative rather than the `variant`
+itself. The final case is instantiated for every remaining alternative and
+preserves its value category.
 
-## One structural pattern across several alternatives
+## One Structural Pattern Across Several Alternatives
 
 The following example handles one tuple alternative by naming its concrete
 tuple type and calling `get`:
@@ -1359,12 +1357,12 @@ return input match -> RecordView {
 };
 ```
 
-The same case can match a `pair`, `tuple`, array, or user-defined decomposable
-alternative with the required shape.
+The same case can match a `pair`, `tuple`, array, or user-defined type with the
+same two-element shape.
 
-## Applying one value pattern across alternatives
+## Applying One Value Pattern Across Alternatives
 
-This example is representative of numeric telemetry aggregation:
+Here is a similar example that checks numeric telemetry values:
 
 ```cpp
 using MetricValue =
@@ -1389,10 +1387,11 @@ return ranges::all_of(metrics, [](const auto& item) {
 });
 ```
 
-This is a central reason `{ P }` cannot merely mean "declare a payload of type
-`T`". Projection and the child pattern are independent, composable operations.
+This is an important example. `{ P }` cannot just be syntax for declaring a
+payload of type `T`. The outer braces select an alternative, and the inner `0`
+matches its value.
 
-## Optional and expected states
+## Optional and Expected States
 
 An optional value currently requires a test followed by a projection:
 
@@ -1404,7 +1403,7 @@ if (!value.has_value()) {
 return std::move(*value);
 ```
 
-Pattern matching exposes both advertised states:
+Pattern matching can name both states directly:
 
 ```cpp
 return parseIntegerText(input) match -> string {
@@ -1428,10 +1427,10 @@ loadResources() match {
 };
 ```
 
-`{}` is not a magic spelling for `nullopt`; it means an advertised state with
-no projection. Named states come from the choice provider.
+`{}` does not specifically mean `nullopt`. It matches a state that has no
+value to project. The named states come from the choice provider.
 
-## Matching representation shape
+## Matching Representation Shape
 
 A configuration type can use a `variant` of five tuple shapes:
 
@@ -1476,9 +1475,9 @@ const T* delta() const {
 }
 ```
 
-## Matching several values
+## Matching Several Values
 
-R6 does not add a separate multi-subject grammar. Existing product facilities
+This paper does not add a separate multi-subject grammar. Existing product facilities
 compose with patterns. Code that merges two compact-or-expanded keyed
 representations commonly contains a nested matrix of
 `holds_alternative` and `get_if` tests. The state space can instead be made
@@ -1522,10 +1521,10 @@ void merge(Entries& destination, Entries&& source) {
 }
 ```
 
-The syntax exposes the Cartesian state matrix without adding a second meaning
-for commas in the `match` grammar.
+This makes all of the combinations visible without adding special syntax for
+matching several subjects.
 
-## Visitor replacement is not purely mechanical
+## Visitor Replacement Is Not Purely Mechanical
 
 Overload selection and first-match pattern coverage are different. This
 visitor does nothing for a nonzero `int`; the generic overload is never called:
@@ -1561,8 +1560,8 @@ value match {
 };
 ```
 
-This distinction is a consequence of composable first-match patterns, not a
-defect to hide behind overload-resolution terminology.
+This is an important difference between a visitor overload set and ordered,
+composable patterns. A rewrite needs to preserve it explicitly.
 
 
 # Design Overview
@@ -1590,7 +1589,7 @@ constexpr int x = 42;
 }
 ```
 
-Braces explicitly enter a choice-projection layer:
+Braces match the value stored inside a choice type:
 
 ```cpp
 variant<int, string> value;
@@ -1602,9 +1601,9 @@ value match {
 };
 ```
 
-The first case dominates in this illustrative example. Its purpose is to show
-that `auto&& whole` binds the `variant`, while `{ auto&& payload }` would bind
-its active alternative.
+The first case makes the later cases unreachable; it is only here to show the
+difference. `auto&& whole` binds the `variant`, while `{ auto&& payload }`
+binds its active alternative.
 
 Polymorphic class objects instead use declaration-shaped runtime refinement:
 
@@ -1622,12 +1621,12 @@ circle match {
 };
 ```
 
-The declaration is initialized normally when it exactly matches the static
-subject type. Otherwise, a class declaration can refine a polymorphic class
-subject. This context dependence is deliberate and is discussed in
-[Static matching and polymorphic refinement].
+The declaration is initialized normally when it exactly matches the subject's
+static type. Otherwise, a class declaration can refine a polymorphic class.
+This distinction is discussed further in
+[Static Matching and Polymorphic Refinement].
 
-On the right of `=>`, R6 supports expressions, a null statement, direct
+On the right of `=>`, this paper supports expressions, a null statement, direct
 `static_assert`, and jump actions. A `do` expression [@P2806R2] provides a
 statement block that yields a value.
 
@@ -1637,7 +1636,8 @@ The following is used to match a value against a single pattern.
 @*expression*@ match case @*pattern*@
 ```
 
-The Boolean form does not export bindings. A pattern-first condition does:
+This produces a `bool` and does not make any bindings available afterward. A
+pattern condition is used when the bindings are needed:
 
 ```cpp
 if (case [0, int foo] = @*expr*@) {
@@ -1696,9 +1696,8 @@ case @*pattern*@ = @*inclusive-or-expression*@
     [ @*pattern-list~opt~*@ ]
 ```
 
-The following pattern-specification subsections are being revised
-incrementally. Sections for R5 patterns that R6 removes are retained and marked
-as such until the corresponding wording changes are complete.
+The R5 patterns that are removed by this paper are retained below and marked as
+such until the wording is updated.
 
 ## Pattern Specifications
 
@@ -1716,7 +1715,7 @@ v match {
 };
 ```
 
-This paper reattempts for `_` to be the wildcard pattern.
+This paper again proposes `_` as the wildcard pattern.
 See [Wildcard Pattern Syntax] for further discussion.
 
 - Matching Condition: None
@@ -1725,9 +1724,9 @@ See [Wildcard Pattern Syntax] for further discussion.
 
 > | `@*for-range-declaration-with-optional-identifier*@`
 
-A declaration pattern initializes a declaration from the current subject. Its
-grammar follows a *for-range-declaration*: one declarator, no initializer, and
-no storage-class forms such as `static` or `thread_local`.
+A declaration pattern initializes a declaration from the current subject. It
+uses the grammar of a *for-range-declaration*: one declarator, no initializer,
+and no storage-class specifiers such as `static` or `thread_local`.
 
 ```cpp
 value match {
@@ -1742,7 +1741,7 @@ Applicability is restricted to exact-match standard conversion sequences.
 Ordinary initialization then determines copying, moving, reference binding,
 constraints, accessibility, and destruction.
 
-The identifier can be omitted. The resulting type pattern performs the same
+The identifier can be omitted. Such a type pattern performs the same
 initialization as the corresponding named declaration, but does not provide a
 name for the initialized entity:
 
@@ -1864,9 +1863,9 @@ void f() {
 > | `{ . @*identifier*@ }`
 > | `{ }`
 
-For a choice type, braces enter the projection layer advertised by that type.
-They do not by themselves request polymorphic refinement. If a projection
-produces a polymorphic class object, an enclosed declaration or type pattern
+For a choice type, braces select from the alternatives advertised by that type.
+They do not by themselves request polymorphic refinement. If the selected
+value is a polymorphic class object, an enclosed declaration or type pattern
 can refine that object in the ordinary way.
 
 - `{ P }` considers each projectable state and applies `P` to its projection.
@@ -2211,7 +2210,7 @@ const auto& get(const S& s) {
 
 # R6 Syntax Details
 
-## Selection expressions
+## Selection Expressions
 
 The selection form is:
 
@@ -2236,7 +2235,7 @@ value match -> int {
 it cannot be nested, used by a single-pattern test, or given a guard.
 Source order remains significant; `default` is not implicitly tested last.
 
-## Single-pattern tests and pattern conditions
+## Single-Pattern Tests and Pattern Conditions
 
 A single-pattern test is:
 
@@ -2301,7 +2300,7 @@ manifestly `true`. This keeps coverage independent of arbitrary constant
 evaluation and avoids changing exhaustiveness when a guard expression is
 refactored.
 
-## Precedence and parsing
+## Precedence and Parsing
 
 `match` has precedence between the pointer-to-member and multiplicative
 operators, following the direction selected in R5 and the precedent discussed
@@ -2366,7 +2365,7 @@ value match -> int {
 
 # Pattern Model
 
-## The current subject
+## The Current Subject
 
 Every pattern is interpreted against one current subject:
 
@@ -2382,17 +2381,16 @@ Every pattern is interpreted against one current subject:
 - `{ .name: P }` first selects a named state;
 - `_` ignores it without performing projection.
 
-This model avoids saying that a declaration sometimes binds an object and
-sometimes implicitly enters a `variant`. Braces change the current subject;
-polymorphic refinement preserves the current object identity while adjusting
-the reference to its derived subobject.
+The important point is that a declaration does not implicitly look inside a
+`variant`. Braces first change the subject to an alternative, and the nested
+declaration binds that subject. Polymorphic refinement is different: it keeps
+the same object and adjusts the reference to a derived subobject.
 
-## Wildcard and value patterns
+## Wildcard and Value Patterns
 
 `_` matches every value in its current domain and introduces no binding.
 
-This is distinct from a C++26 placeholder variable inside a declaration
-pattern:
+This is different from a C++26 placeholder variable in a declaration pattern:
 
 ```cpp
 case _      // ignores the subject; performs no declaration initialization
@@ -2402,8 +2400,8 @@ case auto _ // initializes an unnamed by-value declaration
 The latter can copy, move, throw, and run a destructor. The wildcard cannot.
 
 A value pattern compares its constant expression with the current subject.
-The comparison must be well-formed for the relevant semantic subject. Value
-patterns compose with choice projection and decomposition:
+The comparison must be well-formed. Value patterns can be nested inside choice
+and decomposition patterns:
 
 ```cpp
 value match {
@@ -2413,10 +2411,10 @@ value match {
 };
 ```
 
-Parentheses have their ordinary expression meaning. R6 has no separate
+Parentheses have their ordinary expression meaning. This paper has no separate
 parenthesized-pattern node.
 
-## Declaration patterns
+## Declaration Patterns
 
 A declaration pattern is a real declaration initialized from the current
 subject:
@@ -2432,7 +2430,7 @@ The declaration grammar follows the restrictions of a
 *for-range-declaration*: one declarator, no initializer, and no storage-class
 forms such as `static` or `thread_local`.
 
-The ordinary rules determine:
+The usual declaration rules determine:
 
 - by-value copy and move construction;
 - reference binding and cv-qualification;
@@ -2446,12 +2444,12 @@ rank: identity, lvalue transformations, qualification adjustment, and function
 pointer conversion. Promotions, conversion-rank standard conversions, and
 user-defined conversions do not make a declaration pattern applicable.
 
-There is one additional class-specific rule. If ordinary exact matching does
-not apply, a declaration or type pattern whose declared type is a class can
-refine a current subject of polymorphic class type. The runtime test and object
-adjustment are those of the corresponding pointer-form `dynamic_cast`; the
-declaration is then initialized from the adjusted object. This rule applies to
-class objects, not pointer declarations:
+There is one additional rule for classes. If ordinary exact matching does not
+apply, a declaration or type pattern whose declared type is a class can refine
+a polymorphic class subject. The runtime test and object adjustment are those
+of the corresponding pointer-form `dynamic_cast`. The declaration is then
+initialized from the adjusted object. This rule does not apply to pointer
+declarations:
 
 ```cpp
 Shape& shape = get_shape();
@@ -2476,9 +2474,9 @@ shape match {
 };
 ```
 
-The pattern language is ordered, not overloaded. The first matching case wins.
-Overload ranking is used only to define the permitted conversion category, not
-to reorder cases.
+Patterns are ordered, not overloaded. The first matching case wins. Overload
+ranking is only used to define which conversions are allowed; it does not
+reorder cases.
 
 For a closed choice, every written declaration must be applicable to at least
 one alternative unless dependence makes it potentially useful:
@@ -2505,20 +2503,21 @@ pointer match {
 };
 ```
 
-The usefulness diagnostic is the remedy for source-order mistakes; the
-language does not reorder these cases as an overload set would.
+The second case is rejected as useless. The language does not reorder these
+cases the way an overload set would.
 
-### Applicability versus failed initialization
+### Applicability Versus Failed Initialization
 
-A declaration pattern has three relevant outcomes:
+A declaration pattern has three possible outcomes:
 
-1. It is not applicable to the semantic subject.
+1. It is not applicable to its current subject.
 2. It is applicable and initialization succeeds.
 3. It is applicable, but the selected initialization is ill-formed.
 
-Only the first outcome can omit a dependent semantic case. The third is an
-error. This follows overload resolution: after a by-value overload has been
-selected, failure to perform its copy does not retry an ellipsis fallback.
+Only the first outcome can omit the corresponding case instantiation in a
+dependent match. The third is an error. This follows overload resolution:
+after a by-value overload has been selected, a failed copy does not retry an
+ellipsis fallback.
 
 ```cpp
 struct Job {
@@ -2541,9 +2540,9 @@ process(job);   // error: selected Job initialization requires a copy
 Silently choosing `default` in the second call would turn an ownership error
 into different program behavior.
 
-## Type patterns
+## Type Patterns
 
-A declaration pattern can omit its identifier. Such a type pattern has the
+A declaration pattern can omit its identifier. The resulting type pattern has the
 same initialization semantics as the corresponding named declaration pattern:
 
 ```cpp
@@ -2577,7 +2576,7 @@ the closed protocol's declared alternative type. This does not infer an
 implicit `auto` or `auto&&`; those spellings remain available when placeholder
 deduction and cv/ref control are wanted in an ordinary declaration pattern.
 
-## Decomposition patterns
+## Decomposition Patterns
 
 `[P1, P2, ...]` applies ordinary structured-binding decomposition to the
 current subject and recursively matches each component:
@@ -2614,12 +2613,12 @@ Declaration patterns can themselves contain structured-binding packs:
 case auto [...elements] => (... + elements);
 ```
 
-The declaration, guard, and handler form an implicit template region in which
-the pack is expanded.
+The declaration, guard, and handler form an implicit template region where the
+pack can be expanded.
 
 # Runtime Type and Choice Matching
 
-## Static matching and polymorphic refinement
+## Static Matching and Polymorphic Refinement
 
 A declaration or type pattern first attempts ordinary static exact matching.
 If that does not apply and the current subject is a polymorphic class object,
@@ -2667,16 +2666,18 @@ inspect(circle);                       // ordinary exact binding
 inspect(static_cast<Shape&>(circle));  // runtime downcast succeeds
 ```
 
-This is a real semantic and performance distinction, but it has C++ precedent:
-`typeid(expression)` similarly observes the dynamic type only when the
-expression is a glvalue of polymorphic class type. R6 does not provide an
-in-pattern spelling that demands static-only class matching. A generic API can
-constrain or assert its accepted static subject types; matching a type itself
-remains a possible future facility.
+This means that a small change to the static type can add a runtime operation.
+That is not ideal, but it does have C++ precedent: `typeid(expression)` observes
+the dynamic type only when the expression is a glvalue of polymorphic class
+type.
 
-## Why polymorphic refinement is not braced
+This paper does not provide a pattern that asks for static-only class matching.
+A generic function can constrain or assert the static types that it accepts.
+Matching a type directly is discussed as a possible future extension.
 
-R6 explored requiring braces for runtime class refinement:
+## Why Polymorphic Refinement Is Not Braced
+
+We explored requiring braces for runtime class refinement:
 
 ```cpp
 shape match {
@@ -2685,7 +2686,7 @@ shape match {
 };
 ```
 
-That design had three attractions:
+There are some good reasons to require the braces:
 
 - a bare declaration would always retain ordinary static meaning;
 - braces would visibly mark every runtime operation, including `variant`,
@@ -2696,40 +2697,43 @@ That design had three attractions:
 It also suggested a concise recursive selector such as
 `{ Circle: auto&& [x, y] }`, combining refinement and decomposition.
 
-On balance, these benefits were not compelling enough. A derived object is not
-a payload stored inside its base object: it *is* the object denoted by the base
-reference. Declaration-shaped runtime type patterns are familiar from other
-languages, while braces remain essential for `variant` because that type has a
-meaningful generic active-payload operation:
+The main problem with this argument is that a derived object is not a value
+stored inside its base object. It *is* the object denoted by the base reference.
+A declaration-shaped runtime type pattern is also familiar from other
+languages.
+
+The braces are necessary for `variant` because `variant` has a useful generic
+operation that a polymorphic hierarchy does not:
 
 ```cpp
 case auto&& whole       // bind the variant
 case { auto&& payload } // bind whichever alternative is active
 ```
 
-There is no corresponding statically typed, generic "most-derived object"
-binding for an open class hierarchy. Production examples also overwhelmingly
-bind the refined object and call members or accessors; decomposing a
-polymorphic class immediately after a cast is uncommon and is often impossible
-because of inheritance, private state, or the class's non-aggregate design.
-Changing between a hierarchy and a `variant` is itself uncommon and generally
-changes ownership and API structure, weakening the source-migration argument.
+There is no way to give `payload` the unknown most-derived type of an open
+class hierarchy. In the code we looked at, a successful cast was normally
+followed by member access or function calls. Immediately decomposing the
+derived object was rare, and often would not work because the class has base
+classes or private state.
 
-The chosen syntax does give up the direct refinement-and-subpattern form above.
-Code must bind the derived object and inspect its members or apply a nested
-match in the handler. This is a genuine compositional cost, but the surveyed
-code did not show it to be common enough to justify braces on every ordinary
-polymorphic type case.
+Requiring braces would make some source migrations between a hierarchy and a
+`variant` easier. Those migrations seem rare, and generally involve other
+changes to ownership and APIs as well.
 
-The strongest argument for braces remains that a small generic-code change can
-introduce a runtime cast. The design accepts that cost in exchange for the more
-direct and familiar object syntax. Implementations and diagnostics should make
-the refinement visible in AST dumps and optimization remarks where useful.
+There is one real loss. The unbraced syntax does not provide the direct
+refinement-and-subpattern form above. The derived object needs to be bound and
+then inspected in the handler. I did not find enough examples of this to justify
+putting braces on every ordinary polymorphic type case.
 
-## Why pointer declarations do not refine
+The strongest argument for braces is still the generic example above, where a
+small change introduces a runtime cast. I believe the direct object syntax is
+worth that cost. Compiler diagnostics and AST dumps should still make the
+refinement visible.
 
-Applying the same rule to pointer declarations creates a null-state ambiguity.
-Consider first an ordinary generic pointer match:
+## Why Pointer Declarations Do Not Refine
+
+Applying the same rule to pointers does not work as well. First, consider an
+ordinary generic pointer match:
 
 ```cpp
 template<class T>
@@ -2742,22 +2746,21 @@ int classify(T* pointer) {
 }
 ```
 
-The expected operation is static dispatch on `T`. `classify<int>(nullptr)`
-still selects the `int*` case and binds a null pointer.
+This looks like static dispatch on `T`. `classify<int>(nullptr)` should still
+select the `int*` case and bind a null pointer.
 
-Now consider `Shape*` matched by `Circle*`. Pointer-form
-`dynamic_cast<Circle*>(pointer)` returns null both when the object is not a
-`Circle` and when `pointer` itself is null. Treating that result as a successful
-pattern would enter a `Circle*` arm with a null pointer; treating it as failure
-would make exact `Shape*` declarations and refining `Circle*` declarations
-behave differently on null despite having the same syntactic form. In a
-dependent `T*` match, the same spelling could also change between static
-selection and nullable runtime testing as `T` changes.
+But what should `Circle*` mean when the subject is a `Shape*`?
+`dynamic_cast<Circle*>(pointer)` returns null when the object is not a `Circle`,
+but it also returns null when `pointer` is null. If that is a successful match,
+we enter a `Circle*` case with a null pointer. If it is a failed match, an exact
+`Shape*` declaration and a refining `Circle*` declaration behave differently
+for null despite looking the same. In a template, the same pattern could also
+change from static type selection to a nullable runtime test as `T` changes.
 
-R6 therefore does not perform polymorphic refinement from one pointer type to
-another. Pointer declaration patterns are ordinary exact declaration patterns.
-A non-null pointer is first projected to its referent, after which object
-refinement composes without ambiguity:
+This paper therefore does not perform polymorphic refinement from one pointer
+type to another. Pointer declarations have their normal exact-match behavior.
+To inspect the runtime type of the pointee, first match the pointer's non-null
+state and then match the resulting object:
 
 ```cpp
 void inspect(Shape* shape) {
@@ -2770,10 +2773,10 @@ void inspect(Shape* shape) {
 }
 ```
 
-Here the outer braces are exclusively the pointer's null/non-null projection.
-`Circle&` then refines the projected `Shape&` under the ordinary object rule.
-There is no special pointer-plus-polymorphism operation. With another enclosing
-choice, the syntax reflects both projections:
+The braces above only perform the pointer's null/non-null projection.
+`Circle&` then matches the resulting `Shape&` using the ordinary polymorphic
+object rule. There is no special pointer-plus-polymorphism operation. If the
+pointer is itself stored inside another choice, both projections are visible:
 
 ```cpp
 variant<Shape*, int> value;
@@ -2804,11 +2807,11 @@ inspect_pointer(&circle);                    // 1: exact Circle* declaration
 inspect_pointer(static_cast<Shape*>(&circle)); // 0: no pointer downcast
 ```
 
-That difference is intentional. Use `{ Circle& }` when the pointee's runtime
-type is the operation being requested. References avoid the underlying null
-ambiguity because a reference always denotes an object.
+This difference is intentional. Use `{ Circle& }` to ask about the runtime type
+of the pointee. References do not have this problem because a reference always
+denotes an object.
 
-## Why choice projection is explicit
+## Why Choice Projection Is Explicit
 
 Without a projection marker, this declaration is ambiguous in intent:
 
@@ -2817,7 +2820,7 @@ variant<int, string> value;
 case auto&& selected
 ```
 
-It could bind the `variant` or its active payload. R6 gives it only the normal
+It could bind the `variant` or its active payload. This paper gives it only the normal
 declaration meaning: it binds the `variant`. Braces enter the choice:
 
 ```cpp
@@ -2840,11 +2843,11 @@ value match {
 It would be too surprising for `[int x, int y]` to decompose the whole object
 for one subject type but silently enter a choice for another.
 
-## Closed choices
+## Closed Choices
 
-For a closed choice, `{ P }` considers each advertised projectable state for
-which `P` is viable. Runtime matching tests the active state and applies the
-corresponding semantic instantiation of `P`.
+For a closed choice, `{ P }` considers every projectable state for which `P` is
+viable. At runtime, it tests the active state and uses the corresponding case
+instantiation.
 
 A pattern may cover more than one index:
 
@@ -2856,14 +2859,14 @@ value match {
 };
 ```
 
-Qualification adjustments can likewise make one declaration applicable to
-several alternatives. Usefulness operates on the actual indices and nested
-value coverage, not only on the written type.
+Qualification adjustments can also make one declaration apply to several
+alternatives. Usefulness is checked against the actual indices and nested value
+patterns, not just the type written in the source.
 
-`{ auto&& value }` is a generic projected case. Its declaration, guard, and
-handler are checked separately for every retained projected type.
+`{ auto&& value }` is the generic case. Its declaration, guard, and handler are
+checked separately for every remaining alternative type.
 
-## Named and non-projectable states
+## Named and Non-Projectable States
 
 Named projection chooses an advertised state before matching its projection:
 
@@ -2876,7 +2879,7 @@ result match {
 };
 ```
 
-`{}` matches advertised states for which no projection exists:
+`{}` matches a state that has no value to project:
 
 ```cpp
 optional<int> value;
@@ -2887,9 +2890,10 @@ value match {
 };
 ```
 
-The `.name:` spelling is confined to braces. A bare `name: P` would make
-ordinary identifier lookup unexpectedly consult a trait. The leading dot also
-leaves `[.x: P, .y: Q]` available for future named aggregate decomposition.
+The `.name:` spelling is only available inside braces. A bare `name: P` would
+make ordinary identifier lookup unexpectedly inspect a trait. The leading dot
+also leaves `[.x: P, .y: Q]` available for future named aggregate
+decomposition.
 
 `expected<T, E>` is modeled as value/error, not value/empty. Both states are
 projectable, including a `void` projection for `expected<void, E>`.
@@ -2910,8 +2914,9 @@ participates in exhaustiveness analysis. The pointer and `optional` models do
 so: `nullptr` and `{}` cover the same pointer state, and `nullopt` and `{}`
 cover the same optional state.
 
-The rare valueless state of `variant` is residual and has no projection syntax.
-Code that cares about it can test the whole object first:
+The rare valueless state of `variant` has no projection syntax and is not
+required for exhaustiveness. Code that cares about it can test the whole object
+first:
 
 ```cpp
 value match {
@@ -2920,10 +2925,10 @@ value match {
 };
 ```
 
-## Open choices and `any`
+## Open Choices and `any`
 
-An erased open choice cannot enumerate all projected types, but it still uses
-braces to make runtime projection explicit:
+An open choice such as `any` cannot enumerate all of its possible types. It
+still uses braces to make the runtime access explicit:
 
 ```cpp
 any value;
@@ -2936,21 +2941,21 @@ value match {
 };
 ```
 
-A naked `case int integer` does not inspect `any`; it tests the `any` object
-itself. `{ auto&& value }` is ill-formed for an open erased choice because it
-cannot expose an unknown runtime type as one statically typed binding.
+A bare `case int integer` does not look inside the `any`; it matches the `any`
+object itself. `{ auto&& value }` is ill-formed because there is no C++ type for
+a binding to an arbitrary value stored in an `any`.
 
 # The `alternative_traits` Protocol
 
-The protocol name and some member names remain provisional. The current design
-has closed and open forms.
+The protocol name and some member names are still open to change. There are
+closed and open forms.
 
-The C++29 declarations are available only when pattern matching is enabled.
-The library implementation asserts that reflection is also enabled; in the
-prototype, `-fpattern-matching` implies reflection. Enabling reflection alone
-does not expose `alternative_traits` or its standard-library specializations.
+The declarations are available only when pattern matching is enabled. The
+prototype makes `-fpattern-matching` imply reflection. Enabling reflection by
+itself does not expose `alternative_traits` or its standard-library
+specializations.
 
-## Closed indexed protocol
+## Closed Indexed Protocol
 
 ```cpp
 template<class T>
@@ -3029,12 +3034,11 @@ The protocol laws are:
 - A member of `names` maps source syntax to a provider and one advertised
   state.
 
-An implementation caches the discriminator and calls `get<I>` only after
-selecting `I`. A standard-library specialization can therefore use a private
-unchecked projection mechanism; the public protocol does not expose that
-implementation detail.
+The implementation can save the discriminator and call `get<I>` only after it
+has selected `I`. A standard-library specialization can therefore use a private
+unchecked operation without adding that operation to the public API.
 
-## Standard models
+## Standard Models
 
 | Subject | Model | Required states | Residual state |
 |---|---|---|---|
@@ -3062,9 +3066,9 @@ selected index. `optional` advertises empty index 0 and value index 1.
 `expected` advertises value index 0 and error index 1. The actual index type can
 be `bool` for a binary provider.
 
-The intended models can be sketched as follows. Raw pointers use equivalent
-built-in compiler behavior; their specialization exists as a reusable provider
-for explicitly opted-in nullable library types:
+For example, raw pointers use built-in compiler behavior equivalent to the
+following specialization. The specialization exists so that library types can
+reuse it explicitly:
 
 ```cpp
 template<class T>
@@ -3109,16 +3113,16 @@ struct alternative_traits<optional<T>> : alternative_traits<T*> {
 };
 ```
 
-The pointer provider's `index` parameter is templated so that an inheriting
-nullable type can reuse its state partition. For non-void pointees, `get`
-forms its return type from dereference and therefore preserves the subject's
-actual cv/ref projection. For `void*`, the non-null state has projected type
-`void`; `{ void }` selects that state without dereferencing the pointer.
+The parameter of the pointer provider's `index` is templated so that a nullable
+type can inherit and reuse it. For non-void pointees, the return type of `get`
+comes from dereferencing the actual subject, which preserves cv/ref. For
+`void*`, the non-null state has type `void`; `{ void }` selects it without
+dereferencing the pointer.
 
-`optional` replaces the pointer provider's descriptor table so its empty state
-has the canonical spelling `nullopt`. An ordinary `case 0` remains a test of
-an engaged `optional<int>` containing zero. Its inherited `.some` and `.none`
-names still refer directly to the reusable pointer provider.
+`optional` replaces the pointer provider's table so its empty state is spelled
+`nullopt`. An ordinary `case 0` still tests whether an engaged `optional<int>`
+contains zero. Its inherited `.some` and `.none` names continue to use the
+pointer provider.
 
 Expected advertises two projectable states, including `void` for a successful
 `expected<void, E>`:
@@ -3172,17 +3176,15 @@ struct alternative_traits<variant<Types...>> {
 };
 ```
 
-The unchecked operation is exposition-only. The protocol precondition and the
-language's retained discriminator permit the standard-library specialization
-to use its private unchecked access without exposing that operation as a new
-public `variant` API.
+The unchecked operation is exposition-only. Since the language has already
+checked and saved the index, the standard-library specialization can use
+private unchecked access without adding a new public `variant` API.
 
-Multiple named views are permitted operationally. Each provider has its own
-discriminator and projections. Exhaustiveness can be proven by complete
-coverage of one provider; partial overlap between different providers is
-treated conservatively as maybe useful.
+A type can have multiple named views. Each provider has its own discriminator
+and projections. Covering one complete provider proves exhaustiveness. Partial
+overlap between different providers is treated conservatively as maybe useful.
 
-## Open type-indexed protocol
+## Open Type-Indexed Protocol
 
 An open choice omits `size`:
 
@@ -3196,10 +3198,10 @@ struct alternative_traits<any> {
 };
 ```
 
-For `{ T value }`, matching requests
-`try_cast<remove_cvref_t<T>>(subject)`. A null pointer is a non-match. The
-successful pointee is forwarded like the subject before ordinary declaration
-initialization is checked.
+For `{ T value }`, matching calls
+`try_cast<remove_cvref_t<T>>(subject)`. A null result is a non-match. The
+successful result is forwarded like the subject and then used to initialize
+the declaration.
 
 `has_value` enables `{}` for empty and `{ _ }` for the unknown non-empty
 remainder. Without `has_value`, `{}` is ill-formed.
@@ -3209,10 +3211,10 @@ remainder. Without `has_value`, `{}` is ill-formed.
 Names introduced by a source pattern are visible in that case's guard and
 handler. They are not visible in later cases.
 
-A name is introduced immediately for lookup, preserving the R5 rule, but a
-reference from within the same pattern to a name introduced by that pattern is
-ill-formed. This avoids silently changing an expression pattern from an outer
-name to an earlier sibling binding.
+A name is introduced immediately for lookup, as it was in R5. However, using a
+name from within the same pattern that introduced it is ill-formed. Otherwise,
+adding a declaration to an earlier part of a pattern could silently change a
+later expression from an outer name to the new binding.
 
 `subject match case P` never exports names. In a pattern condition, names are
 available in later `&&` elements and the successful controlled statement, but
@@ -3226,9 +3228,9 @@ if (case [int x, int y] = value && x < y) {
 }
 ```
 
-The pattern condition is strict. `P` must be viable after substitution; a
-non-viable pattern is not converted to `false`. Static detection uses a
-requires-expression:
+`P` must be valid after substitution. An invalid pattern does not simply
+produce `false`. A requires-expression can be used to ask whether the pattern
+is valid:
 
 ```cpp
 if constexpr (requires { value match case [_, _]; }) {
@@ -3236,12 +3238,12 @@ if constexpr (requires { value match case [_, _]; }) {
 }
 ```
 
-`if constexpr (case P = E)` retains the same viability requirement. The
-`constexpr` controls selection after the condition has been formed; it does not
-turn the condition into a detection operation.
+`if constexpr (case P = E)` has the same requirement. The `constexpr` applies
+after the condition has been formed; it does not turn the condition into a
+detection operation.
 
-The subject of `case P = E` is parsed after the pattern binding has been
-introduced. Consequently, a same-named use denotes self-initialization and is
+The pattern binding is introduced before the subject of `case P = E` is parsed.
+As a result, using the same name on the right is self-initialization and is
 ill-formed:
 
 ```cpp
@@ -3255,7 +3257,7 @@ outside the scope of the element binding.
 
 # Templates and Case Instantiation
 
-## Strict single-pattern tests
+## Strict Single-Pattern Tests
 
 For a viable pattern, `E match case P` has the same value behavior as:
 
@@ -3266,9 +3268,9 @@ E match {
 }
 ```
 
-The equivalence is not a well-formedness transformation. A non-viable `P`
-makes the single-pattern test ill-formed, even where a dependent
-selection with multiple cases could omit that semantic case.
+This is only an equivalence of values. If `P` is not valid, the single-pattern
+test is ill-formed. A dependent selection with several cases can instead omit
+a case that does not apply to one specialization.
 
 This separates two questions:
 
@@ -3277,11 +3279,11 @@ requires { E match case P; } // is P viable?
 E match case P               // given viability, does this value match?
 ```
 
-An irrefutable viable pattern always produces `true`, but still evaluates its
-subject and any required projections or declarations. It is not operationally
-equivalent to the unevaluated requirement.
+An irrefutable valid pattern always produces `true`, but still evaluates its
+subject and any projections or declarations. It is therefore not equivalent to
+the unevaluated requirement.
 
-## Dependent case matching
+## Dependent Case Matching
 
 A source case can be inapplicable in one specialization and applicable in
 another:
@@ -3297,10 +3299,10 @@ int classify(V value) {
 }
 ```
 
-For `variant<int, string>`, the `char` semantic candidate is absent, but the
-source case remains maybe useful because another specialization can contain
-`char`. By contrast, a non-dependent `variant<int, string>` with the same
-`char` case is ill-formed because the case is not useful.
+For `variant<int, string>`, no `char` case is instantiated. The source case is
+still considered maybe useful because another specialization can contain
+`char`. The same case on a non-dependent `variant<int, string>` is ill-formed
+because it cannot match anything.
 
 Exhaustiveness is checked for each concrete specialization:
 
@@ -3315,10 +3317,10 @@ static_assert(arity(tuple(1, 2)) == 2);
 // arity(0); // error: the instantiated match is not exhaustive
 ```
 
-## Implicit template regions
+## Implicit Template Regions
 
-A generic projected case produces one semantic case instantiation for each
-retained projected type:
+A generic projected case is instantiated once for each remaining alternative
+type:
 
 ```cpp
 variant<int, string> value;
@@ -3330,7 +3332,7 @@ value match {
 
 The declaration, guard, and handler form an implicit template region. Result
 deduction, `decltype`, constraints, local statics, diagnostics, and structured
-binding packs are evaluated in the corresponding semantic instantiation.
+binding packs are handled separately in each instantiation.
 
 An earlier unguarded irrefutable semantic case closes only its own domain and
 prevents later handlers for that domain from being instantiated:
@@ -3348,10 +3350,10 @@ The second handler is instantiated for `string` and `vector<int>`, not for
 `int`. This is analogous to an overloaded visitor, without turning match cases
 into an overload set.
 
-The foundational instantiation rule uses individual irrefutability, not the
-union of several refutable cases. Usefulness can diagnose a later case as
-redundant without retroactively suppressing its handler instantiation based on
-the complete pattern matrix.
+Whether a handler is instantiated depends on earlier individual irrefutable
+cases, not on a combination of several refutable cases. Usefulness can still
+diagnose the later case as redundant, but it does not retroactively suppress
+that handler's instantiation.
 
 # Exhaustiveness and Usefulness
 
@@ -3376,18 +3378,17 @@ value match {
 Guarded cases are useful but do not contribute coverage because their guards
 can fail.
 
-The implementation follows the Maranget/Rust pattern-matrix model. The
-specification must define stable language behavior rather than incorporating
-one implementation algorithm by reference. A candidate is classified as:
+The implementation uses the Maranget/Rust pattern-matrix algorithm. The
+standard should specify the observable behavior rather than refer to one
+implementation algorithm. A case can be:
 
 - useful;
 - maybe useful because dependence or opacity prevents a final answer; or
 - not useful.
 
-Conservative `maybe useful` is the compatibility mechanism for dependent and
-open cases.
+"Maybe useful" is the conservative answer for dependent and open cases.
 
-## Required and residual domains
+## Required and Residual Domains
 
 Required states must be covered for exhaustiveness. Residual states participate
 in usefulness but are not required.
@@ -3421,7 +3422,7 @@ missing value.
 
 # Evaluation Model
 
-## Subject and lifetime
+## Subject and Lifetime
 
 - The subject expression is evaluated exactly once.
 - An lvalue subject continues to denote the original object.
@@ -3433,11 +3434,11 @@ missing value.
   statement, including the `else` path, using the same lifetime-extension
   machinery as condition variables and C++23 range-for.
 
-A selection case is not an invented function-return boundary. A selected
-reference result is analyzed according to the enclosing use of the complete
-match expression.
+A match case does not introduce a function-return boundary. A selected
+reference result is diagnosed according to how the complete match expression
+is used.
 
-## Pattern tests and declarations
+## Pattern Tests and Declarations
 
 Cases are attempted in source order. Within one attempted case:
 
@@ -3461,10 +3462,10 @@ std::move(subject) match {
 
 If the second component is not zero, `value` is not initialized.
 
-A failed guard does not roll back permitted side effects. To avoid implicitly
-consuming the subject before deciding whether an arm is selected, a guarded
-declaration pattern is ill-formed when its initialization invokes a
-non-trivial move constructor:
+A failed guard does not undo side effects. However, a guarded declaration
+pattern is ill-formed if its initialization invokes a non-trivial move
+constructor. Otherwise, merely testing a case could consume the subject before
+matching continues with the next case:
 
 ```cpp
 std::move(value) match {
@@ -3486,7 +3487,7 @@ valid in guarded declaration patterns. Non-trivial moves remain valid in
 unguarded arms, where successful pattern selection cannot continue to a later
 arm.
 
-## Projection reuse
+## Projection Reuse
 
 An implementation may retain or recompute equivalent projection operations
 within one match, including:
@@ -3496,21 +3497,23 @@ within one match, including:
 - open-choice `try_cast<T>` and `has_value`;
 - polymorphic runtime refinement and its adjusted pointer.
 
-Expression comparisons, declaration initialization, and guards occur at each
-source occurrence and are not merged. Operations belonging solely to cases
-after the selected case are not speculated.
+Expression comparisons, declaration initializations, and guards are still
+evaluated at each source occurrence. Operations used only by a later case
+cannot be evaluated before that case is reached.
 
-A failed guard is not a cache barrier. If a guard mutates the subject, a later
-equivalent projection may reuse retained state or recompute it; code that
-invalidates a retained reference has ordinary C++ consequences.
+A failed guard does not require the implementation to throw away cached
+projections. If a guard modifies the subject, a later projection may be reused
+or recomputed. Code that invalidates a saved reference has the usual C++
+consequences.
 
-Closed-provider `index(subject)` is required to be `noexcept`, permitting the
-discriminator to be retained and used by a switch or decision tree. The
-physical lowering is not specified.
+The `index(subject)` operation of a closed provider is required to be
+`noexcept`. This allows the implementation to save it and use a switch or a
+decision tree. The exact lowering is not specified.
 
-## Unmatched execution
+## Unmatched Execution
 
-Static exhaustiveness normally rules out required unmatched states. At runtime:
+Exhaustiveness checking normally rules out unmatched required states. At
+runtime:
 
 - an unmatched void-yielding match falls through;
 - an unmatched non-void match terminates;
@@ -3521,9 +3524,9 @@ without forcing that rare state into ordinary projection syntax.
 
 # Result Types and `match constexpr`
 
-Handlers retained in one semantic specialization must have a consistent result
-type unless an explicit trailing return type supplies the conversion target.
-A discarded handler does not contribute to deduction.
+The handlers used by one specialization must have a consistent result type,
+unless an explicit trailing return type supplies the conversion target. A
+discarded handler does not participate in deduction.
 
 ```cpp
 constexpr auto result(auto value) {
@@ -3538,20 +3541,18 @@ constexpr auto result(auto value) {
 The assertion is instantiated only for a specialization not closed by an
 earlier unguarded irrefutable case.
 
-`match constexpr` requires the tests performed by selected patterns and their
-guards to be constant expressions and discards unselected handlers in the
-style of `if constexpr`. It does not change pattern viability or turn pattern
-conditions into detection operations.
+`match constexpr` requires the selected pattern tests and guards to be constant
+expressions. Like `if constexpr`, it discards the unselected handlers. It does
+not turn an invalid pattern into a failed match.
 
 
-# R6 Design Rationale and Alternatives
+# R6 Design Decisions
 
-## Why one `match` expression
+## Why One `match` Expression
 
-Earlier `inspect` designs explored a construct that was a statement or an
-expression depending on context. C++ has no general precedent for choosing
-between those two grammatical categories after parsing the same construct,
-and that choice would force the introducer to be an unconditional keyword.
+Earlier `inspect` designs allowed the same construct to be a statement or an
+expression depending on where it appeared. There is no other C++ construct
+that works this way, and it also requires `inspect` to be a full keyword.
 
 P2688 instead has one expression form. A selection can appear as an expression
 statement when its value is unused:
@@ -3572,26 +3573,24 @@ int result = value match {
 };
 ```
 
-The same operator also supports a single-pattern test. R6 adds `case`
-to make that form read as `E match case P`, but retains the unified model
-rather than introducing a separate `is` expression with different pattern
-semantics.
+The same operator also supports a single-pattern test. This paper adds `case`
+so that the form is `E match case P`. It does not introduce a separate `is`
+expression with another set of pattern rules.
 
-## Why selection cases require `case`
+## Why Selection Cases Require `case`
 
-R5 allowed a pattern to begin a selection case directly. Requiring `case` provides a
-stable recovery point, distinguishes case attributes from declaration
-attributes inside a pattern, makes empty and direct-statement handlers easier
-to parse, and reserves room for the pattern grammar to grow without repeatedly
-reopening the surrounding match grammar.
+R5 allowed a pattern to begin a selection case directly. Requiring `case` gives
+the parser a reliable place to recover, distinguishes attributes on a case from
+attributes in a declaration pattern, and makes empty and statement handlers
+easier to parse. It also leaves more room to extend the pattern grammar later.
 
 It also aligns the selection form with `switch` while retaining source-ordered
 pattern semantics. `default` is provided only as the familiar spelling of an
 unguarded top-level wildcard.
 
-## Why `_` is the wildcard
+## Why `_` Is the Wildcard
 
-R6 retains `_` as the wildcard spelling. This follows [@P2392R2] and the broad
+This paper retains `_` as the wildcard spelling. This follows [@P2392R2] and the broad
 language precedent in Python, Rust, Scala, Swift, C#, Erlang, Prolog, Haskell,
 OCaml, and others. [@P1371R3] used `__`, following [@P1110R0], while
 [@P1469R0] proposed restricting `_` as an identifier in structured bindings.
@@ -3625,10 +3624,10 @@ value match {
 };
 ```
 
-This is a small language-specific cost for using the universally recognizable
-wildcard spelling.
+I believe this is a small cost for using the wildcard spelling that everyone
+expects.
 
-## Why expressions are patterns
+## Why Expressions Are Patterns
 
 Without expression patterns, the facility could not replace even the simplest
 `switch`. Restricting the syntax to literals would still exclude named
@@ -3646,17 +3645,17 @@ value match {
 ```
 
 Once literals, unqualified names, qualified names, and constant expressions
-are admitted, the language must distinguish an expression referring to an
-existing name from a declaration introducing a new one. R6 does not reinterpret
-a bare identifier as a binding. It parses expressions and declarations using
-their ordinary C++ roles.
+are allowed, we have to distinguish an expression that refers to an existing
+name from a declaration that introduces a new one. This paper does not make a
+bare identifier introduce a binding. Expressions and declarations keep their
+ordinary C++ meaning.
 
-## Why declarations instead of `let`
+## Why Declarations Instead of `let`
 
-R5's `let` provided one intentionally simple binding model, but "why does C++
-need `let`?" was the most frequent first reaction. Real code overwhelmingly
-wants to bind a typed payload, and C++ declarations already express ownership,
-cv-qualification, references, forwarding, constraints, and `decltype`.
+R5's `let` provided a simple binding model. However, "why does C++
+need `let`?" was by far the most common first question. C++ declarations
+already express copies, moves, references, forwarding, constraints, and
+`decltype`, and those distinctions matter when binding a pattern.
 
 Declaration patterns are more familiar:
 
@@ -3666,12 +3665,11 @@ case auto&& value
 case std::integral auto integer
 ```
 
-The cost is semantic weight. Copying, moving, reference binding, deleted
-constructors, explicit constructors, and conversions must all be specified.
-R6 accepts that cost rather than introducing a second C++ binding language.
+This does come with more rules. We have to specify copying, moving, reference
+binding, deleted constructors, explicit constructors, and conversions. I think
+that is better than introducing a second binding language for C++.
 
-Several questions that were hypothetical in R5 become explicit design rules
-in R6.
+This requires answering a few questions that `let` avoided.
 
 First, `auto value` binds the current subject, not an implicitly selected
 payload:
@@ -3685,8 +3683,8 @@ value match {
 };
 ```
 
-The first case dominates in this illustrative example. Its purpose is to show
-that braces, not the declaration's spelling, request choice projection.
+The first case makes the second unreachable. The point is that braces, not the
+declaration's spelling, request choice projection.
 
 Second, declarations use source-ordered first-match semantics rather than
 forming an overload set. Conversion-ranked initialization would make this
@@ -3702,25 +3700,24 @@ value match {
 ```
 
 If arbitrary conversions were admitted, the `int` declaration could consume a
-`double` and make the second case dead. R6 instead uses the exact-match rank and
-lets usefulness analysis diagnose domination among the conversions that
-remain.
+`double` and make the second case dead. This paper instead uses the exact-match
+rank and lets usefulness analysis diagnose domination among the conversions
+that remain.
 
-Third, by-value declarations are real ownership operations. Given an rvalue
-subject, `auto value` can move; given an lvalue, it copies. `auto&& value` is
-the forwarding spelling. A guarded declaration cannot invoke a non-trivial
-move constructor before testing its guard; use a reference pattern and perform
-the move in the handler after the guard succeeds.
+Third, a by-value declaration really copies or moves. `auto value` copies an
+lvalue and moves from an rvalue. `auto&& value` is the forwarding spelling. A
+guarded declaration cannot invoke a non-trivial move constructor before testing
+the guard; bind a reference and move in the handler instead.
 
-## Removed R5 pattern forms
+## Removed R5 Pattern Forms
 
 The R5 `? P` pattern combined nullable testing and dereference in one dedicated
-spelling. R6 instead models nullable types as choices, so `{ P }` and `{}`
+spelling. This paper instead models nullable types as choices, so `{ P }` and `{}`
 compose with the same protocol as `variant` and `expected`.
 
-The R5 unbraced `T: P` selector made variant selection concise but did not
-resolve whole-object versus payload matching for `auto`. R6 keeps its recursive
-operation as `{ T: P }`: braces make projection explicit, `T` selects the
+The R5 unbraced `T: P` selector made variant selection concise, but did not
+answer whether `auto` binds the whole object or its payload. This paper keeps
+the recursive operation as `{ T: P }`: braces perform the projection, `T` selects the
 projected type, and `P` recursively matches the resulting current subject.
 `{ .[I]: P }` supplies the corresponding positional escape hatch for duplicate
 or otherwise indistinguishable alternative types.
@@ -3728,22 +3725,22 @@ or otherwise indistinguishable alternative types.
 The R5 parenthesized pattern is removed. Parentheses retain their normal role
 for expression patterns and grammar disambiguation.
 
-## Why projection is explicit
+## Why Projection Is Explicit
 
-Making `int value` implicitly inspect `variant<int, double>` appears familiar,
-but making `[int x, int y]` silently inspect
-`variant<pair<int, int>, tuple<int, int>>` is substantially more magical. It
-also leaves `auto&& value` irreducibly ambiguous between the whole object and
-the active alternative.
+It is tempting to let `int value` automatically inspect a
+`variant<int, double>`. But then should `[int x, int y]` automatically inspect a
+`variant<pair<int, int>, tuple<int, int>>`? More importantly, does
+`auto&& value` bind the `variant` or the active alternative?
 
-Braces assign one composable meaning to the transition into a choice. This is
-the principal syntax cost of R6 and the mechanism that keeps declarations
-ordinary.
+There is no good answer based only on the declaration. Braces mean "look inside
+this choice," after which the nested pattern has its normal meaning. This is
+the main syntax cost of the new design.
 
-## Why first match rather than overload resolution
+## Why First Match Rather Than Overload Resolution
 
-Actual overload resolution over alternatives would make ordering largely
-irrelevant and permit conversions that are dangerous for closed sums:
+We also considered treating the cases as an overload set. This would make the
+order mostly irrelevant and allow conversions that are surprising for closed
+sum types:
 
 ```cpp
 variant<int, double> value;
@@ -3754,27 +3751,26 @@ value match {
 };
 ```
 
-If conversion-ranked initialization were allowed, the first case could consume
-both alternatives and make the second dead regardless of source intent. R6
-uses source-ordered first match and restricts declaration applicability to
-exact-match conversion rank. Exhaustiveness then diagnoses genuinely useless
-cases.
+If general conversions were allowed, the `int` case could handle both
+alternatives and the `double` case would never be selected. Reversing the cases
+would not fix the problem. This paper keeps first-match semantics and only
+allows exact-match conversion rank. Exhaustiveness checking diagnoses a case
+that cannot be reached.
 
-## Why not one implicit `as` operation
+## Why Not One Implicit `as` Operation
 
-[@P2392R3] places type testing, conversion, and binding behind an `as`
-spelling. That is attractive for simple examples but gives one syntax several
-different jobs. In particular, conversion-based matching over
-`variant<int, double>` can make an `int` case accept a `double` alternative and
-render a later `double` case ineffective.
+[@P2392R3] puts type testing, conversion, and binding behind an `as` spelling.
+This looks good in simple examples, but gives one syntax several different
+jobs. In particular, conversion-based matching over `variant<int, double>` can
+make an `int` case accept a `double` alternative and make the later `double`
+case useless.
 
-C# declaration patterns are a useful precedent for runtime refinement of an
-object, but C++ additionally has closed generic sum types whose active payload
-can be handled without naming its type. A naked declaration therefore cannot
-unambiguously mean both "bind this object" and "enter this object's active
-alternative".
+C# declaration patterns are good precedent for runtime refinement of an
+object. C++ also has closed generic sum types whose active value can be handled
+without naming its type. A bare declaration cannot mean both "bind this object"
+and "bind this object's active alternative."
 
-R6 separates the operations instead:
+This paper separates the operations instead:
 
 ```cpp
 case int value       // bind the current subject
@@ -3782,39 +3778,38 @@ case { int value }   // project a choice, then bind the result
 ```
 
 The exact-match restriction prevents ordinary numeric conversions from
-silently changing closed-choice dispatch. A class declaration can additionally
-refine a polymorphic class object, as described in
-[Why polymorphic refinement is not braced]; it still does not enter a choice.
+silently changing closed-choice dispatch. A class declaration can also refine
+a polymorphic class object, as described in
+[Why Polymorphic Refinement Is Not Braced]; it still does not enter a choice.
 
-## Why `any` also requires braces
+## Why `any` Also Requires Braces
 
-Allowing a naked `int value` to inspect `any` would make a simple declaration
-silently perform runtime type erasure. Braces make `any`, `variant`, and
-user-defined choices share the same visible choice-projection boundary.
-Polymorphic classes are intentionally different: a derived object retains the
-identity of the base object being matched rather than being a stored payload.
+If a bare `int value` could inspect an `any`, an ordinary-looking declaration
+would silently perform a type-erased runtime operation. `any`, `variant`, and
+user-defined choices all use braces. Polymorphic classes are different because
+the derived object is still the same object denoted by the base reference; it
+is not a stored payload.
 
-## Why non-viability is not `false`
+## Why Non-Viability Is Not `false`
 
-An earlier model made a non-viable dependent single-pattern test evaluate to
-`false`. This was convenient for shape detection but conflated two questions:
+We considered making an invalid dependent single-pattern test evaluate to
+`false`. This is convenient for shape detection, but combines two questions:
 
 - can the operation be formed?
 - does this runtime value match?
 
 C++ normally answers the first with `requires` and the second with a Boolean
-expression. R6 follows that separation. This also prevents a typo in a required
-pattern condition from silently selecting `else`.
+expression. This paper keeps those questions separate. It also prevents a typo
+in a required pattern condition from silently selecting `else`.
 
-An explicit `match requires` mode was explored for dependent cases. It makes
-structural generic dispatch convenient, but creates two nearly identical match
-forms and does not remove the need to distinguish inapplicability from failure
-of a selected declaration initialization. R6 instead gives dependent case
-matching its own case-instantiation rules and keeps single-pattern tests
-strict.
+An explicit `match requires` mode was also considered. It makes generic
+structural dispatch convenient, but gives us two nearly identical forms of
+`match`. It also does not remove the need to distinguish an inapplicable case
+from a selected declaration whose initialization is invalid. This paper keeps
+single-pattern tests strict and handles dependent selection cases separately.
 
-This is a deliberate change from the strict static-condition rule explored in
-R5. That rule caught mistakes such as a string literal in a character match:
+This changes the strict static-condition rule explored in R5. That rule caught
+mistakes such as a string literal in a character match:
 
 ```cpp
 template<class Operator>
@@ -3828,24 +3823,22 @@ void evaluate(const Operator& op) {
 }
 ```
 
-If `op.kind()` is dependent, R6's case-instantiation model can classify
-the erroneous case as inapplicable for a specialization whose result is
-`char`. That flexibility is necessary for generic projected cases over a
-dependent choice, but it weakens typo detection. The strict single-pattern
-test and an explicit `requires` expression retain a way to ask the viability
-question. Whether dependent case matching needs an additional opt-in
-strict mode remains a design question worth presenting to EWG.
+If `op.kind()` is dependent, the `"/"` case does not apply when the result is
+`char`. This behavior is needed for generic cases over a dependent choice, but
+it does make this typo harder to find. A strict single-pattern test and an
+explicit `requires` expression can still ask whether a pattern is valid. We
+should discuss whether dependent selections also need an opt-in strict mode.
 
-## Why by-value patterns remain permitted
+## Why By-Value Patterns Remain Permitted
 
-Reference-only declarations would simplify failed-case mutation and permit more
-aggressive projection reuse, but would prevent a selection case from naturally
-consuming its subject. R6 keeps by-value declarations, while rejecting a
-non-trivial move before a guard because a failed guard would implicitly expose
-the consumed subject to later arms. Trivial moves and copies remain permitted;
-an explicitly consuming guarded arm binds a reference and moves in its handler.
+Allowing only reference declarations would simplify failed cases and permit
+more projection reuse. It would also prevent a case from naturally consuming
+its subject. This paper keeps by-value declarations. A non-trivial move before
+a guard is rejected because a failed guard would expose the moved-from subject
+to later cases. A guarded case that wants to consume the value can bind a
+reference and move in the handler.
 
-## Why guards require parentheses
+## Why Guards Require Parentheses
 
 `match` binds more tightly than ordinary binary operators. Without delimiters,
 a guard such as:
@@ -3871,7 +3864,7 @@ boundary. The pattern condition uses a different solution:
 top-level `&&` separates later conditions, so it does not accept a case-style
 trailing guard.
 
-## Why there is no multi-subject grammar
+## Why There Is No Multi-Subject Grammar
 
 Earlier revisions explored matching a braced list directly:
 
@@ -3899,13 +3892,13 @@ std::forward_as_tuple(lhs, rhs) match {
 };
 ```
 
-R6 therefore continues the R3 decision not to add a second multi-subject
+This paper therefore continues the R3 decision not to add a second multi-subject
 grammar. This does not prevent a future tuple-expression facility from being
 used as a match subject.
 
 ## Operator precedence
 
-R6 retains R5's placement between pointer-to-member and multiplicative
+This paper retains R5's placement between pointer-to-member and multiplicative
 operators. The simple rule is that `match` binds more tightly than every binary
 operator except pointer-to-member:
 
@@ -3940,7 +3933,7 @@ rule and can make a parenthesized subexpression unexpectedly absorb an outer
 operator. The selected precedence is easier to state and asks users to
 parenthesize binary subjects.
 
-## The `=>` separator
+## The `=>` Separator
 
 [@P2971R2] proposes an implication operator using the same token. If that work
 is adopted, `=>` should remain the case separator in the syntactically delimited
@@ -3961,7 +3954,7 @@ token such as `~>` were considered, but do not offer a compelling improvement:
 `->` has the same issue, `:` is already heavily used by choice names and
 labels, and a new token would be unfamiliar.
 
-## Deferred pattern facilities
+## Deferred Pattern Facilities
 
 The following remain strong candidates for later work:
 
@@ -3977,7 +3970,7 @@ Nested structured bindings are being developed separately. They are useful
 independently of pattern matching and provide the declaration analogue of
 recursive structural patterns.
 
-## Generalized irrefutable declarations
+## Generalized Irrefutable Declarations
 
 A declaration such as:
 
@@ -3996,9 +3989,9 @@ The remaining unique benefit is mostly one-statement mixed binding, such as a
 copy for one component and a reference for another. That does not currently
 justify another declaration form, so the syntax is reserved for future work.
 
-## Other extensions considered
+## Other Extensions Considered
 
-### Pattern combinators
+### Pattern Combinators
 
 Or-patterns can merge cases that have the same behavior:
 
@@ -4022,10 +4015,10 @@ direction match {
 
 The difficult part is not the spelling but binding semantics. Every branch of
 an or-pattern must introduce a compatible set of names, types, and value
-categories. R6 leaves that design independent rather than weakening
+categories. This paper leaves that design independent rather than weakening
 composition to avoid it.
 
-### Named aggregate decomposition
+### Named Aggregate Decomposition
 
 Positional decomposition is awkward when only a few members matter or when
 layout order is not the semantic interface. A future extension could use
@@ -4042,10 +4035,10 @@ The leading dot is intentionally parallel to designated initialization. It is
 also why named choice alternatives use `{ .name: P }`: the braces distinguish
 choice-state lookup from future member lookup in square brackets.
 
-### Typed recursive choice selection
+### Typed Recursive Choice Selection
 
 R5's `T: P` could both select a nominal alternative and recursively match its
-payload. R6 retains that operation inside the explicit projection boundary:
+payload. This paper retains that operation inside braces:
 
 ```cpp
 command match {
@@ -4078,7 +4071,7 @@ choice. The selected state must be projectable when `: P` is present; the
 state-only form does not require `get<I>`. Open choices have no positional
 index selector.
 
-### Static type subjects
+### Static Type Subjects
 
 Static dispatch does not need to overload value declaration patterns. A type
 subject could instead use ordinary type patterns:
@@ -4102,16 +4095,17 @@ C++26 reflection suggests an additional spelling over reflections:
 ```
 
 The lookup, constraint, and reflection models should be designed together.
-R6 does not need static type subjects to provide dependent value matching.
+This paper does not need static type subjects to provide dependent value
+matching.
 
-### Reflection-based customization
+### Reflection-Based Customization
 
 Earlier revisions considered replacing tuple-like and variant-like library
 protocols entirely with reflection-based maps. For example, an encapsulated
 record could advertise reflected accessors rather than `tuple_size`,
 `tuple_element`, and `get<I>` specializations.
 
-R6 takes a narrower step for choices. `alternative_traits::alternatives` is a
+This paper takes a narrower step for choices. `alternative_traits::alternatives` is a
 reflected descriptor table, but runtime discrimination and projection still
 use the conventional `index(subject)` and `get<I>(subject)` operations.
 Products continue to use existing structured-binding machinery. A fully
@@ -4122,8 +4116,8 @@ reflection-driven projection protocol remains future work.
 
 ::: note
 This section preserves the detailed design record from R5. Where R6 changes a
-conclusion, the current direction is described in [R6 Design Rationale and
-Alternatives] and the R5 discussion below remains as history and motivation.
+conclusion, the current direction is described in [R6 Design Decisions] and
+the R5 discussion below remains as history and motivation.
 The examples in this section are being updated incrementally.
 :::
 
@@ -4359,8 +4353,8 @@ notation is the backbone of generic programming.
 types. R6 nevertheless adopts the declaration-shaped syntax for polymorphic
 objects and retains braces for choices. The operations are not interchangeable:
 `variant` has a generic active payload, whereas an open hierarchy has no
-statically typed generic most-derived value. [Why polymorphic refinement is not
-braced] records the tradeoff and the pointer cases that ultimately motivated
+statically typed generic most-derived value. [Why Polymorphic Refinement Is Not
+Braced] records the tradeoff and the pointer cases that ultimately motivated
 the distinction.
 
 **Question 3**: Initialization? Conversions? First-match? Best-match?
@@ -5924,16 +5918,16 @@ under `x86-64 clang (pattern matching - P2688)`{.default}.
   witnesses.
 - CFG and several analysis integrations.
 
-## Architectural lessons
+## Implementation Notes
 
-### Parsing the operator and patterns
+### Parsing the Operator and Patterns
 
 Clang parses an initial cast-expression and then folds binary operators by
 precedence. The prototype adds `match` at its selected precedence and decides
 between a selection, `match constexpr`, a trailing return type, and a
 single-pattern test after consuming the contextual keyword.
 
-R6's required `case` gives every case a reliable recovery point. Inside a
+Requiring `case` gives every case a reliable recovery point. Inside a
 pattern, however, expressions and declarations intentionally share one
 position. The parser uses C++'s existing simple-declaration classifier, with a
 for-range-style declarator whose identifier may be omitted, before falling
@@ -5942,25 +5936,24 @@ back to expression parsing. Parentheses force the expression path.
 Attributes need additional care because `[[` can begin either an attribute or
 a nested decomposition pattern. The prototype only attempts the declaration
 attribute interpretation when skipping the attributes leaves a viable simple
-declaration; otherwise `[` begins structural pattern parsing. This is a
-localized tentative classification, not a parse-and-rebuild of an entire
+declaration; otherwise `[` begins structural pattern parsing. The parser only
+tentatively classifies this opening. It does not parse and rebuild an entire
 pattern.
 
-`case P = E` introduces another deliberate boundary. The first top-level `=`
+`case P = E` introduces another parsing boundary. The first top-level `=`
 terminates the pattern, and direct-condition operands stop at top-level `&&`.
 This is why assignment and logical-or subjects require parentheses in that
 form.
 
-### Source cases and semantic instantiations
+### Source Cases and Case Instantiations
 
-One source case can produce several differently typed semantic instances. The
+One source case can produce several differently typed case instantiations. The
 prototype initially tried to mutate and replay source AST nodes; that model was
 fragile under later tree transformations. It now separates source cases from
-`MatchCaseInstantiation` objects. The standard needs an explicit implicit
-template-region model even though it does not expose those implementation
-objects.
+`MatchCaseInstantiation` objects. The wording needs to describe the resulting
+implicit template region without exposing those implementation objects.
 
-### Choice dispatch should remain semantic
+### Lowering Choice Dispatch
 
 At `-O2`, direct language matches already optimize into switches, merged
 destinations, or a single direct call when the discriminator becomes known.
@@ -5984,16 +5977,15 @@ information. A later lowering can choose:
 The current prototype lowers through ordinary branches and relies on LLVM
 optimization. A dedicated decision-DAG lowering remains future work.
 
-### Dynamic class matching
+### Dynamic Class Matching
 
 Polymorphic declaration patterns must retain the semantics of an ordered
 sequence of `dynamic_cast` refinements, including open-world derived classes
-and pointer adjustment. The
-compiler can nevertheless common repeated targets, derive base matches from a
-successful more-derived result, use final-class fast paths, and employ LTO or
-profile-guided caches while preserving that relation.
+and pointer adjustment. The compiler can still reuse repeated targets, derive
+a base match from a successful more-derived match, use final-class fast paths,
+and employ LTO or profile-guided caches while preserving those semantics.
 
-### Projection reuse is not one cache
+### Caching Discriminators and Projections
 
 A discriminator can often be shared more broadly than a projected object. In
 a product match, a sibling choice index may be independent of an earlier
@@ -6001,7 +5993,7 @@ alternative selection, while its projected reference is created only inside a
 particular dominated branch. The prototype therefore distinguishes cache
 identity for discriminators from cache identity for selected projections.
 
-## Known implementation gaps
+## What Remains
 
 - Polymorphic refinement does not yet implement every valid cross-cast.
 - Modules and complete tooling support remain deferred.
@@ -6132,9 +6124,10 @@ For parenthesized patterns, the steps are similar:
    This handles situations like `(x) + y => // ...` so that we can proceed to parse the `+ y`
    with a parenthesized expression of `(x)`.
 
-# Open Questions Before Wording
+# Questions Before Wording
 
-The following decisions should be explicit before R6 wording is finalized:
+Before the R6 wording can be completed, we need to resolve the following
+points:
 
 1. Confirm the precise exact-match conversion and reference-binding rules for
    declaration and type patterns, including bit-fields, arrays, and functions.
@@ -6165,7 +6158,7 @@ The following decisions should be explicit before R6 wording is finalized:
 
 # Proposed Polls
 
-The following polls are expected to be split as the design is reviewed:
+These polls will probably need to be split as the design is reviewed:
 
 1. Forward the expression-oriented, composable `match` facility described in
    P2688R6 toward C++29.
