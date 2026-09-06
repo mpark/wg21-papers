@@ -3304,6 +3304,74 @@ still considered maybe useful because another specialization can contain
 `char`. The same case on a non-dependent `variant<int, string>` is ill-formed
 because it cannot match anything.
 
+Reference binding can similarly make a case apply only in some
+specializations:
+
+```cpp
+template<class T>
+int classify(variant<T> value) {
+  return std::move(value) match {
+    case { T& reference } => 1;
+    default               => 2;
+  };
+}
+```
+
+For an ordinary `variant<T>`, projecting from `std::move(value)` produces
+`T&&`. The `T&` case is omitted and `classify(variant<int>{42})` returns `2`.
+This is the same result as the corresponding visitor:
+
+```cpp
+return std::visit(
+    overload{
+        [](T&) { return 1; },
+        [](auto&&) { return 2; },
+    },
+    std::move(value));
+```
+
+Removing the fallback makes both forms ill-formed when instantiated. For
+`match`, the remaining cases do not cover the required variant alternative.
+For `visit`, the visitor is not invocable with `T&&`.
+
+This does not mean that the case is generally useless for an rvalue choice.
+In C++26, `optional<T&>` is valid and dereferencing it produces `T&` even when
+the `optional` itself is an rvalue:
+
+```cpp
+template<class T>
+int classify(optional<T> value) {
+  return std::move(value) match {
+    case { T& reference } => 1;
+    default               => 2;
+  };
+}
+
+int value = 42;
+classify(optional<int>{42});     // 2
+classify(optional<int&>{value}); // 1
+```
+
+There are nevertheless dependent patterns that are provably useless. A
+built-in array has a fixed, non-customizable decomposition arity:
+
+```cpp
+template<class T>
+int classify(T (&value)[2]) {
+  return value match {
+    case [T first, T second, T third] => 1;
+    default                           => 2;
+  };
+}
+```
+
+No substitution can make the three-element pattern match the two-element
+array. The prototype currently treats the case as maybe useful because it is
+dependent. Whether such cases must be diagnosed remains an open question. The
+`variant<T>` example is not by itself sufficient to establish this rule
+without making assumptions about possible specializations and their projection
+behavior.
+
 Exhaustiveness is checked for each concrete specialization:
 
 ```cpp
@@ -3735,6 +3803,49 @@ It is tempting to let `int value` automatically inspect a
 There is no good answer based only on the declaration. Braces mean "look inside
 this choice," after which the nested pattern has its normal meaning. This is
 the main syntax cost of the new design.
+
+## Transparent Value Patterns
+
+There is one case where the braces can appear unnecessary:
+
+```cpp
+optional<bool> value;
+
+value match {
+  case true         => yes();
+  case false        => no();
+  case std::nullopt => empty();
+};
+```
+
+These three comparisons cover every runtime value of `optional<bool>`.
+However, the exhaustiveness checker cannot generally infer that equality on a
+wrapper is equivalent to equality on one of its projections. It therefore
+does not consider the example exhaustive. The explicit form is:
+
+```cpp
+value match {
+  case { true }     => yes();
+  case { false }    => no();
+  case std::nullopt => empty();
+};
+```
+
+We considered allowing `alternative_traits` to mark an alternative as
+transparent to value patterns. Such an opt-in would promise that, for a
+pattern `P` and state `I`, `subject == P` is equivalent to:
+
+```cpp
+index(subject) == I && get<I>(subject) == P
+```
+
+This works for `optional` and for the value state of `expected`. It does not
+work for pointers or smart pointers, whose equality compares addresses rather
+than pointees. It also does not handle the error state of `expected` without a
+more complicated transformation between `unexpected<E>` and `E`.
+
+These use cases do not justify another protocol rule. This paper requires the
+braces and keeps value patterns on their current subject.
 
 ## Why First Match Rather Than Overload Resolution
 
@@ -5999,6 +6110,8 @@ identity for discriminators from cache identity for selected projections.
 - Modules and complete tooling support remain deferred.
 - Some direct loop conditions that require case instantiation are still more
   restricted than `if`.
+- The `alternative_traits` model for C++26 `optional<T&>` still needs to
+  preserve its reference projection without forming a pointer-to-reference.
 - The parser still uses tentative type parsing in places where a dedicated
   syntactic classifier would be cleaner.
 - Debug information and AST presentation for synthetic declarations and
@@ -6154,6 +6267,10 @@ points:
 11. Reconcile wildcard `_`, declaration-pattern placeholder variables, and
     unnamed structured-binding packs without implying that their initialization
     behavior is interchangeable.
+12. Decide whether a dependent case that is provably useless for every valid
+    substitution, such as a three-element decomposition of a built-in
+    two-element array, must be diagnosed or can remain conservatively maybe
+    useful.
 
 
 # Proposed Polls
