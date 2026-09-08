@@ -50,8 +50,9 @@ highlighting:
     object can perform `dynamic_cast`-equivalent refinement. Pointer
     declarations remain static; a pointer is first dereferenced through its
     nullable `{ P }` projection before its object can be refined.
-  - The R5 optional and parenthesized patterns are removed. The unbraced
-    `T: P` selector is replaced by the explicit braced form `{ T: P }`.
+  - The R5 optional pattern is removed. Parenthesized patterns are retained and
+    generalized to group every pattern form. The unbraced `T: P` selector is
+    replaced by the explicit braced form `{ T: P }`.
   - A single-pattern test is written `subject match case P`.
   - Pattern conditions use `case P = subject`; range-for additionally
     supports `case P : range` with filtering semantics.
@@ -145,7 +146,8 @@ The main changes are:
     with `dynamic_cast` semantics. Pointer declarations do not downcast;
     `{ Derived& }` first projects a non-null base pointer and then refines the
     resulting object.
-  - Dedicated optional and parenthesized patterns are removed.
+  - The dedicated optional pattern is removed. Parentheses group patterns and
+    provide stable composition as the pattern grammar grows.
   - Non-exhaustive and redundant cases are diagnosed as errors.
 
 The main form is a selection expression:
@@ -1700,6 +1702,7 @@ case @*pattern*@ = @*inclusive-or-expression*@
     @*logical-and-expression*@
     @*declaration-pattern*@
     @*type-pattern*@
+    ( @*pattern*@ )
     { @*pattern*@ }
     { . @*identifier*@ : @*pattern*@ }
     { . @*identifier*@ }
@@ -1872,7 +1875,7 @@ current C++ standard does not yet have these pattern operators.
 | Python | Yes, `P1 | P2` | No | No | Yes |
 | Java | Limited: grouped case labels | No | No | No |
 | C# | Yes, `P1 or P2` | Yes, `P1 and P2` | Yes, `not P` | Yes |
-| C++ (P2688R6) | Yes, `P1 || P2` | No | No | No |
+| C++ (P2688R6) | Yes, `P1 || P2` | No | No | Yes |
 
 Binding rules differ even among the languages with general or-patterns. For
 example, some require every alternative to introduce the same names and
@@ -1882,6 +1885,17 @@ negation. Standard Haskell has no or-pattern; the entry above refers to GHC's
 parenthesized pattern, although earlier switch-pattern previews included one.
 Swift obtains the same grouping effect through its recursive tuple-pattern
 grammar rather than a separately named parenthesized-pattern production.
+
+In practice, grouping in these languages is mostly needed for two reasons.
+Rust, Scala, Haskell, OCaml, and Python use it to control the interaction
+between an or-pattern and a whole-value binding, for example Rust's
+`value @ (A | B)`, OCaml's `(A | B) as value`, and Python's
+`(A as value) | (B as value)`. F# and C# also need it to compose operators of
+different precedence, such as `(A | B) & C` and `not (A or B)`. Swift's
+parentheses are primarily a consequence of its recursive tuple-pattern
+grammar; ordinary grouping is less important in its current pattern language.
+This is evidence for retaining grouping before adding C++'s eventual
+as-pattern or additional pattern operators, rather than retrofitting it later.
 
 **Why `||`, rather than `|`.** Most of the languages in the table use `|` for
 alternation, but `|` already has an important meaning in C++ value patterns. A
@@ -1945,13 +1959,15 @@ case Read || Write => either_value();
 ```
 
 The grammar consumes `||` as pattern alternation. Its existing alternative
-token `or` has exactly the same grammatical meaning. Parentheses force an
-ordinary logical-or expression pattern:
+token `or` has exactly the same grammatical meaning. Parentheses group the
+pattern, so matching the result of an ordinary logical-or expression requires
+an unambiguous expression spelling:
 
 ```cpp
 value match {
   case first || second => either_pattern();
-  case (first || second) => boolean_expression();
+  case (first || second) => either_pattern_grouped();
+  case static_cast<bool>(first || second) => boolean_expression();
 };
 ```
 
@@ -1987,41 +2003,78 @@ corresponding pack can contain a different number of declarations after each
 alternative is specialized; the pack name and pack position in the binding
 interface are what must agree.
 
-### Parenthesized Pattern (R5; removed in R6)
-
-::: note
-R6 has no parenthesized-pattern node. Parentheses retain their ordinary
-expression role and disambiguate expression patterns from declarations.
-:::
+### Parenthesized Pattern
 
 > | `( @*pattern*@ )`
 
-A parenthesized pattern is used to group non-delimited patterns.
+A parenthesized pattern groups any pattern. It has the same matching semantics
+and introduces the same bindings as its nested pattern.
 
 - Matching Condition: `@*subject*@ match @*pattern*@`
 
-Example:
-
 ```cpp
-void f(const Shape* s) {
-    s match {
-        ? (Circle: let c) => // ...
-        ? (Rectangle: let r) => // ...
-        _ => // ...
-    };
-}
+direction match {
+  case (north || south) => vertical();
+  case _ => horizontal();
+};
+
+pair match {
+  case ([0, int value]) => use(value);
+  case (_) => fallback();
+};
 ```
 
-```cpp
-std::optional<int> maybe_int();
+Parentheses around `_` or `[P...]` are not normally useful when written
+directly. They are useful for substitution: a macro or future pattern
+abstraction can wrap an arbitrary pattern without knowing its outer grammar.
 
-void f() {
-    maybe_int() match {
-        (? let i) let o => // i is int, o is the whole optional
-        _ => // ...
-    };
-}
+```cpp
+#define GROUP_PATTERN(...) (__VA_ARGS__)
+
+value match {
+  case GROUP_PATTERN(0 || 1) => small();
+  case GROUP_PATTERN([int x, int y]) => pair(x, y);
+  case GROUP_PATTERN(_) => fallback();
+};
 ```
+
+General grouping also avoids committing the grammar of later prefix, infix,
+or postfix patterns to today's precedence choices. For example, if a future
+revision adds an as-pattern operator, `(P) @ auto value` can accept any `P`.
+
+The opening `(` does not by itself select pattern grammar. The complete
+parenthesized construct is disambiguated in the same manner as a declaration
+and an expression: if its contents form a complete pattern at the enclosing
+pattern boundary, they are a parenthesized pattern; otherwise the `(` begins
+an ordinary expression, including any postfix or binary continuation after
+the closing `)`. Disambiguation is syntactic and does not retry after semantic
+analysis.
+
+```cpp
+case (north || south)       // parenthesized or-pattern
+case (_)                    // parenthesized wildcard pattern
+case ([int x, int y])       // parenthesized decomposition pattern
+case (Widget value)         // parenthesized declaration pattern
+
+case (_ + 1)                // parenthesized expression pattern
+case (value)++              // postfix expression pattern
+case (int)value             // cast expression pattern
+case ([] { return 1; }())   // lambda-call expression pattern
+case ({ int x = 1; x; })    // GNU statement-expression pattern
+```
+
+When both interpretations form a complete construct, pattern grammar takes
+priority. Consequently `(A || B)` groups an or-pattern. To match the result of
+logical-or, use an unambiguous expression such as `bool(A || B)`. To match an
+outer variable named `_`, use an expression spelling such as `+_` where
+appropriate or the general `auto{_}`.
+
+CWG issue 2228 introduces *nofun-type-id* to resolve a closely related
+language ambiguity: `(T())` should be a parenthesized construction expression,
+not an always-ill-formed cast to a function type. The type-pattern grammar
+should reuse that distinction. In particular, giving `(T())` its ordinary
+expression meaning does not require giving `(A || B)` expression priority over
+the or-pattern grammar.
 
 ### Alternative Pattern (R6)
 
@@ -2440,9 +2493,10 @@ if (ready && case [int x, int y] = first &&
 }
 ```
 
-The first top-level `=` separates the pattern from the subject. Assignment
-expression patterns therefore require parentheses. A trailing pattern guard is
-not accepted in this form; a later `&&` condition is the guard.
+The first top-level `=` separates the pattern from the subject. A direct
+assignment expression is therefore not available as a pattern in this form;
+it can be factored into a named or helper expression. A trailing pattern guard
+is not accepted in this form; a later `&&` condition is the guard.
 
 The range-for form filters: an element for which the pattern does not match is
 skipped.
@@ -2492,12 +2546,19 @@ Parentheses select a larger subject when needed:
 Declaration, type, and expression patterns intentionally occupy one syntactic
 position. The design uses these disambiguation rules:
 
-- A complete type pattern takes precedence over an expression interpretation,
-  following the `sizeof` and `typeid` family of ambiguities.
+- Classification considers the complete candidate through its pattern
+  boundary. No initial token or token pair commits to pattern interpretation.
+  For example, `_` and `[]` are patterns, while `_ + 1` and `[]{}()` are
+  expression patterns.
+- A complete type pattern takes precedence over an expression interpretation.
+  The exact type grammar should follow CWG issue 2228's *nofun-type-id*
+  distinction so that an apparent cast to a function type remains an
+  expression instead.
 - Declaration-versus-expression ambiguity otherwise follows ordinary
   block-scope declaration rules, restricted to one for-range-style declarator.
-- Parentheses force the ordinary expression interpretation where applicable;
-  there is no parenthesized-pattern AST node.
+- A leading `(` starts a complete-construct disambiguation. It forms a
+  parenthesized pattern only when the contents complete as a pattern at the
+  enclosing pattern boundary; otherwise it starts an ordinary expression.
 - In `case P = E`, the first top-level `=` terminates the pattern.
 - In a pattern condition, each ordinary Boolean element and each case subject
   is an *inclusive-or-expression*. A top-level `&&` separates condition
@@ -2582,8 +2643,9 @@ value match {
 };
 ```
 
-Parentheses have their ordinary expression meaning. This paper has no separate
-parenthesized-pattern node.
+Parentheses group patterns. An expression whose leading parentheses would
+otherwise select pattern grammar can use an unambiguous expression spelling,
+such as a named expression or `static_cast`.
 
 ## Declaration Patterns
 
@@ -3961,8 +4023,8 @@ projected type, and `P` recursively matches the resulting current subject.
 `{ .[I]: P }` supplies the corresponding positional escape hatch for duplicate
 or otherwise indistinguishable alternative types.
 
-The R5 parenthesized pattern is removed. Parentheses retain their normal role
-for expression patterns and grammar disambiguation.
+R6 retains and generalizes the R5 parenthesized pattern. Parentheses group any
+pattern rather than serving as an expression-pattern escape.
 
 ## Why Projection Is Explicit
 
@@ -6231,7 +6293,15 @@ Requiring `case` gives every case a reliable recovery point. Inside a
 pattern, however, expressions and declarations intentionally share one
 position. The parser uses C++'s existing simple-declaration classifier, with a
 for-range-style declarator whose identifier may be omitted, before falling
-back to expression parsing. Parentheses force the expression path.
+back to expression parsing.
+
+Every ambiguous primary-pattern position receives a syntax-only
+classification. No prefix is sufficient: `_` can begin `_ + 1`, `[` can begin
+`[]{}()`, `(_` can begin `(_ + 1)`, `([` can begin `([]{}())`, and `({` can
+begin a GNU statement-expression. The prototype tentatively classifies the
+complete construct without performing semantic actions, then parses it exactly
+once as either a pattern or an expression. This follows the same general
+principle as declaration-versus-expression disambiguation.
 
 Attributes need additional care because `[[` can begin either an attribute or
 a nested decomposition pattern. The prototype only attempts the declaration
@@ -6301,8 +6371,8 @@ identity for discriminators from cache identity for selected projections.
   restricted than `if`.
 - The `alternative_traits` model for C++26 `optional<T&>` still needs to
   preserve its reference projection without forming a pointer-to-reference.
-- The parser still uses tentative type parsing in places where a dedicated
-  syntactic classifier would be cleaner.
+- The type-pattern branch of parenthesized disambiguation still needs the
+  `nofun-type-id` distinction from CWG issue 2228.
 - Debug information and AST presentation for synthetic declarations and
   implicit template regions need production-quality design.
 - The current lowering does not preserve a first-class match decision DAG into
@@ -6367,64 +6437,48 @@ in the operator precedence table.
 ## Parsing the Parenthesized Pattern
 
 ::: note
-This subsection is retained as the R5 parsing record. R6 removes the
-parenthesized-pattern AST node and uses parentheses only for ordinary
-expressions and disambiguation.
+This subsection records the R6 parser strategy. The earlier prototype
+committed to pattern grammar immediately after seeing `(`; that approach was
+too early.
 :::
 
-For other patterns, the proposed solution is such that a leading pattern token takes us into pattern parsing.
-For example, `_` is a wildcard pattern, and it is so even if there is a variable named `_` in scope.
-On the other hand, `*_` is an expression that dereferences a variable `_`, because `*` takes us into expression
-parsing. Finally, `_ + 1` produces an error along the lines of `"expected '=>' after wildcard pattern"`.
-The leading `_` takes us into pattern parsing, even though `_ + 1` could be a valid expression.
+Pattern interpretation is selected only after a complete candidate reaches a
+pattern boundary. For example, `_` is a wildcard pattern even if a variable
+named `_` is in scope, while `*_` and `_ + 1` are expression patterns.
 
 ```cpp
 expr match {
   _ => // wildcard pattern
   *_ => // dereference
-  _ + 1 => // error: expected '=>' after wildcard pattern
-  let => // error: expected identifier or '[' after 'let'
-  let x => // let pattern
-  let [x] => // SB pattern
+  _ + 1 => // addition using an outer variable named `_`
+  []{}() => // lambda-call expression
+  [] => // empty decomposition pattern
 }
 ```
 
-Now, without parenthesized pattern, a `(` would take us into expression parsing. It was considered to drop the
-parenthesized pattern for this simplicity. However, it's difficult to ignore that there is virtually no language
-that provide pattern matching without parenthesized patterns. Having them now I believe will also be better
-down the road in evolving the set of available patterns.
-
-It turns out, the difficulty of parsing parenthesized pattern is not much harder than the difficulty
-of parsing parenthesized expressions. We already have parenthesized expressions of the form `( @*expression*@ )`,
-but this is a bit of a simplification as we also have cast expressions such as `(int)x`. We already can't just
-recurse into a `ParseExpression` upon seeing a `(`.
-
-Even worse, the expression parsing today requires looking *past* the `)` to determine how to parse the expression.
-Given `(T())`, we don't yet know whether the `T()` is a function type or a constructor call.
-In fact it changes based on what comes next.
+Parentheses make the overlap particularly visible. None of the apparent
+pattern starts is conclusive:
 
 ```cpp
-(T()) * x  // T() is a function type.    Cast of *x to T()
-(T()) / x  // T() is a constructor call. Same as T() / x
+(_ + 1)
+([]{}())
+({ int x = 1; x; })
+(T)value
+(auto(value))
 ```
 
-This involves blindly storing everything until the `)`, tentatively parsing what follows as a cast expression,
-then deciding what the `T()` means based on whether the cast expression parsing attempt succeeded or not.
-`* x` is a cast expression, so `T()` is a type, `/ x` is not a cast expression, so `T()` is an expression.
+The parser instead performs a syntax-only tentative classification through the
+matching `)` and the enclosing pattern boundary. The tentative pass builds no
+AST and introduces no declarations. It recognizes pattern-only structure,
+including wildcard, decomposition, declaration, parenthesized, and or-pattern
+forms, while treating an ordinary expression as an opaque token sequence.
+After classification, the construct is parsed semantically exactly once.
 
-Equipped with that monstrosity, Clang basically tries to parse an expression that starts with `(` such as
-cast expression and fold expression, along with extensions such as statement expressions and compound literals.
-If that fails, it proceeds to parse `( @*expression*@ )`.
-
-For parenthesized patterns, the steps are similar:
-
-1. If the token after the `(` is a `_`, `?`, `let`, or `[`, parse it a a pattern.
-2. Otherwise, try parsing it as expression that starts with `(`.
-3. Otherwise, parse it as `( @*pattern*@ )`.
-4. If the resulting pattern inside of the parenthesized pattern is an expression, convert it into
-   an parenthesized expression and proceed parsing. (i.e. postfix, then RHS of binary operator)
-   This handles situations like `(x) + y => // ...` so that we can proceed to parse the `+ y`
-   with a parenthesized expression of `(x)`.
+This restores ordinary expression behavior for `(x) + y`, `(x)++`, C-style
+casts, parenthesized assignment, conditional, and comma expressions, lambda
+calls, and GNU statement-expressions. It still gives pattern meaning to
+complete constructs such as `(A || B)`, `(int value)`, `([P...])`, and `(_)`.
+The choice is syntactic; semantic failure does not cause reinterpretation.
 
 # Questions Before Wording
 
