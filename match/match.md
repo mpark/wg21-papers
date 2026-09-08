@@ -40,6 +40,9 @@ highlighting:
     written `default`.
   - Declaration patterns replace `let` bindings. The identifier may be
     omitted, but the declaration is still initialized.
+  - Add recursively composable or-patterns, written `P1 || P2`. Alternatives
+    may introduce the same names with independently deduced types; the guard
+    and handler form an implicit template region over the selected alternative.
   - Braces explicitly request choice projection: `{ P }`, `{ T: P }`,
     `{ C: P }`, `{ .[index]: P }`, `{ .[index] }`, `{ .name: P }`, and `{}`.
     Here `C` is a type-constraint applied to the declared alternative type.
@@ -207,7 +210,7 @@ if (case @*pattern*@ = @*expression*@) {
 }
 ```
 
-This paper proposes five composable pattern forms:
+This paper proposes six composable pattern forms:
 
 | Pattern | Examples | Meaning |
 |---|---|---|
@@ -216,9 +219,10 @@ This paper proposes five composable pattern forms:
 | Declaration or type | `int value`, `const Widget&`, `auto x` | Initializes an object or reference using exact-match conversions; the identifier may be omitted. |
 | Decomposition | `[0, auto y]` | Decomposes its subject and applies nested patterns to its components. |
 | Alternative | `{ int value }`, `{ .error: Error& error }`, `{}` | Selects an advertised alternative and, when present, applies a nested pattern to its projection. |
+| Or | `0 || 1`, `[0, int x] || [int x, 0]` | Matches the first successful alternative against the same subject. |
 
 Decomposition and alternative patterns provide subjects for nested patterns.
-This is what allows the five forms to compose.
+This is what allows the six forms to compose.
 
 The list is intentionally small. It is based on implementation experience,
 existing C++ code, committee feedback, and related papers such as
@@ -264,13 +268,13 @@ declaration syntax to express type, ownership, references, and forwarding.
 A bare identifier remains an expression that refers to an existing name.
 
 This paper covers the `match` selection expression, single-pattern tests, and
-pattern conditions. It specifies the five pattern forms described in the
+pattern conditions. It specifies the six pattern forms described in the
 introduction and how they compose over product types, nullable types, closed
 and open alternative types, and polymorphic types. User-defined alternative
 types participate through `std::alternative_traits`.
 
 Predicates, extractors, range patterns, named-member decomposition, matching
-types themselves as subjects, pattern combinators such as `and` and `or`, and
+types themselves as subjects, pattern combinators such as `and` and `not`, and
 multiple-subject matching are deferred to future work.
 
 # Examples from Real-World C++
@@ -1685,8 +1689,15 @@ case @*pattern*@ = @*inclusive-or-expression*@
     if ( @*init-statement~opt~*@ @*condition*@ )
 
 @*pattern*@:
+    @*or-pattern*@
+
+@*or-pattern*@:
+    @*primary-pattern*@
+    @*or-pattern*@ || @*primary-pattern*@
+
+@*primary-pattern*@:
     _
-    @*constant-expression*@
+    @*logical-and-expression*@
     @*declaration-pattern*@
     @*type-pattern*@
     { @*pattern*@ }
@@ -1815,6 +1826,166 @@ constant pattern. The constant pattern can be any `@*constant-expression*@`,
 such as literals, `constexpr` variables, or values of an `enum`.
 
 - Matching Condition: `bool(@*subject*@ == @*constant-expression*@);`
+
+### Or-pattern
+
+> | `@*pattern*@ || @*pattern*@`
+
+An or-pattern applies each alternative to the same current subject. The
+alternatives are tested from left to right and the or-pattern succeeds when
+the first alternative succeeds.
+
+```cpp
+direction match {
+  case Direction::north || Direction::south => vertical();
+  case Direction::east || Direction::west => horizontal();
+};
+```
+
+Or-patterns compose recursively. In particular, they can group values after
+one choice projection rather than repeating the projection:
+
+```cpp
+static bool found_load_reserve(const RISCVInst& inst) {
+  return inst match case { LR_W || LR_D };
+}
+
+response match {
+  case { .error: timeout || cancelled } => retry();
+  default => fail();
+};
+```
+
+The following table compares general pattern composition in ten languages.
+"Limited" means that alternatives can share an arm, but do not form a pattern
+that can be nested arbitrarily. The table describes P2688R6 for C++; the
+current C++ standard does not yet have these pattern operators.
+
+| Language | OR | AND | NOT | Grouping `(P)` |
+|---|---|---|---|---|
+| Swift | Limited: comma-separated case alternatives | No | No | Yes |
+| Rust | Yes, `P1 | P2` | No | No | Yes |
+| Scala | Yes, `P1 | P2` | No | No | Yes |
+| Haskell | GHC extension: `OrPatterns` | No | No | Yes |
+| F# | Yes, `P1 | P2` | Yes, `P1 & P2` | No | Yes |
+| OCaml | Yes, `P1 | P2` | No | No | Yes |
+| Python | Yes, `P1 | P2` | No | No | Yes |
+| Java | Limited: grouped case labels | No | No | No |
+| C# | Yes, `P1 or P2` | Yes, `P1 and P2` | Yes, `not P` | Yes |
+| C++ (P2688R6) | Yes, `P1 || P2` | No | No | No |
+
+Binding rules differ even among the languages with general or-patterns. For
+example, some require every alternative to introduce the same names and
+types, while others prohibit particular bindings beneath an alternative or a
+negation. Standard Haskell has no or-pattern; the entry above refers to GHC's
+`OrPatterns` extension. Java's finalized pattern grammar has no general
+parenthesized pattern, although earlier switch-pattern previews included one.
+Swift obtains the same grouping effect through its recursive tuple-pattern
+grammar rather than a separately named parenthesized-pattern production.
+
+**Why `||`, rather than `|`.** Most of the languages in the table use `|` for
+alternation, but `|` already has an important meaning in C++ value patterns. A
+conservative lexical survey of production LLVM, Clang, LLD, and LLDB code
+found at least 89 single-line `case A | B` labels in 11 files. The same search
+found at least 17 labels in six Chromium files. The search excluded tests and
+misses qualified and multiline expressions, so these are lower bounds rather
+than exact AST counts.
+
+For example, Clang distinguishes two individual header roles from their exact
+bitwise combination
+([source](https://github.com/llvm/llvm-project/blob/da9625ca5a1517ec21224e3467be3ff250887061/clang/lib/Lex/ModuleMap.cpp#L72-L83)):
+
+```cpp
+case PrivateHeader:
+  return Module::HK_Private;
+case TextualHeader:
+  return Module::HK_Textual;
+case PrivateHeader | TextualHeader:
+  return Module::HK_PrivateTextual;
+```
+
+LLDB similarly switches over every useful combination of readable, writable,
+and executable permission bits
+([source](https://github.com/llvm/llvm-project/blob/da9625ca5a1517ec21224e3467be3ff250887061/lldb/source/Utility/State.cpp#L44-L64)).
+Chromium distinguishes two extension states from their combination
+([source](https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/chrome/browser/extensions/extension_util.cc#L405-L421)):
+
+```cpp
+case kDse:
+  return DseNtpOverrideType::kDse;
+case kNtp:
+  return DseNtpOverrideType::kNtp;
+case kDse | kNtp:
+  return DseNtpOverrideType::kBoth;
+```
+
+Bitwise intersections occur as exact case values too, although much less
+often. The production scan found two clear LLVM cases and no Chromium cases;
+both LLVM cases classify floating-point masks
+([source](https://github.com/llvm/llvm-project/blob/da9625ca5a1517ec21224e3467be3ff250887061/llvm/lib/Transforms/InstCombine/InstCombineCalls.cpp#L1054-L1064)):
+
+```cpp
+case ~fcZero & ~fcNan:
+case ~(fcZero | fcSubnormal) & ~fcNan:
+```
+
+Equality tests against values such as `(MemProt::Read | MemProt::Exec)` and
+`(kBlock | kStart)` provide additional examples that would naturally become
+value patterns. By contrast, the survey found no production `case A && B` or
+`case A || B` label in either corpus. The only direct examples were Clang tests
+of constant-expression diagnostics.
+
+Using `|` for pattern alternation would therefore make a common C++ spelling
+mean the opposite of what it means in an existing `switch`, unless every
+combined value were parenthesized. `||` preserves the useful distinction:
+
+```cpp
+case Read | Write  => combined_value();
+case Read || Write => either_value();
+```
+
+The grammar consumes `||` as pattern alternation. Its existing alternative
+token `or` has exactly the same grammatical meaning. Parentheses force an
+ordinary logical-or expression pattern:
+
+```cpp
+value match {
+  case first || second => either_pattern();
+  case (first || second) => boolean_expression();
+};
+```
+
+Bitwise `|` and logical `&&` remain part of an expression pattern. This keeps
+bitmask constants and ordinary conjunction expressions unchanged. R6 does not
+reserve or otherwise assign pattern semantics to `&&`.
+
+Every alternative must introduce the same ordered names and pack structure.
+The declarations corresponding to one name need not have the same type or
+value category. The selected alternative determines those properties, and the
+guard and handler are instantiated for each viable alternative:
+
+```cpp
+pair match {
+  case [0, int value] || [int value, 0] => use(value);
+};
+
+variant match {
+  case { int value } || { std::string const& value } => use(value);
+};
+
+tuple match {
+  case [0, auto&& ...values] || [auto&& ...values, 0] =>
+    use(values...);
+};
+```
+
+The second example has separate semantic instantiations in which `value` is
+`int` and `std::string const&`, respectively. Exactly one alternative's
+declarations are initialized. If its guard fails, matching continues with the
+next source arm rather than another alternative of the same or-pattern. A
+corresponding pack can contain a different number of declarations after each
+alternative is specialized; the pack name and pack position in the binding
+interface are what must agree.
 
 ### Parenthesized Pattern (R5; removed in R6)
 
@@ -4071,7 +4242,7 @@ The following remain strong candidates for later work:
 
 - static type subjects, including reflection values;
 - named aggregate decomposition such as `[.x: P, .y: Q]`;
-- or-patterns and range patterns;
+- range patterns;
 - whole-value binding combined with a nested pattern;
 - dynamic slice and sequence patterns;
 - a generalized irrefutable declaration such as
@@ -4102,32 +4273,50 @@ justify another declaration form, so the syntax is reserved for future work.
 
 ## Other Extensions Considered
 
-### Pattern Combinators
+### Evidence for Or-patterns
 
-Or-patterns can merge cases that have the same behavior:
+Or-patterns are included because grouped dispatch is common in existing C++.
+The LLVM, Clang, LLD, and LLDB survey found 17,230 runs of consecutive `case`
+labels sharing a handler, containing 96,902 labels. The Chromium survey found
+another 10,016 runs containing 47,270 labels. These are lower bounds: both
+codebases also provide library encodings of the same operation through
+`StringSwitch::Cases` and `TypeSwitch::Case<Ts...>`.
+
+For example, LLVM's verifier groups three instruction kinds:
 
 ```cpp
-direction match {
-  case 'N' => vertical();
-  case 'S' => vertical();
-  case 'E' => horizontal();
-  case 'W' => horizontal();
+switch (instruction.getOpcode()) {
+case Instruction::And:
+case Instruction::Or:
+case Instruction::Xor:
+  verifyBitwiseBinaryOperator(instruction);
+  break;
+default:
+  break;
 };
 ```
 
-A future combinator could express the grouping directly:
+The direct pattern form preserves that grouping:
 
 ```cpp
-direction match {
-  case or('N', 'S') => vertical();
-  case or('E', 'W') => horizontal();
+instruction.getOpcode() match {
+  case Instruction::And || Instruction::Or || Instruction::Xor =>
+    verifyBitwiseBinaryOperator(instruction);
+  default => ;
 };
 ```
 
-The difficult part is not the spelling but binding semantics. Every branch of
-an or-pattern must introduce a compatible set of names, types, and value
-categories. This paper leaves that design independent rather than weakening
-composition to avoid it.
+The same need appears in variant predicates. LLDB currently tests two
+load-reserve alternatives with two `holds_alternative` calls joined by `||`.
+The compositional spelling projects the variant once:
+
+```cpp
+return inst match case { LR_W || LR_D };
+```
+
+The survey counts do not imply that every grouped switch should be rewritten.
+They show that a facility intended to replace `switch`, variant visitation,
+and runtime type switches needs a non-duplicating form for shared behavior.
 
 ### Named Aggregate Decomposition
 
