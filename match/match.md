@@ -38,8 +38,9 @@ highlighting:
   - Updated the examples in [Comparison Tables] with [@P2392R3] syntax.
   - Match cases require `case`; an unguarded top-level wildcard can also be
     written `default`.
-  - Declaration patterns replace `let` bindings. The identifier may be
-    omitted, but the declaration is still initialized.
+  - Declaration patterns replace `let` bindings. Their restricted declarator
+    follows a *conversion-type-id*, with a separate structured-binding form.
+    The identifier may be omitted, but the declaration is still initialized.
   - Add recursively composable or-patterns, written `P1 || P2`. Alternatives
     may introduce the same names with independently deduced types; the guard
     and handler form an implicit template region over the selected alternative.
@@ -1736,11 +1737,22 @@ See [Wildcard Pattern Syntax] for further discussion.
 
 ### Declaration and Type Patterns (R6)
 
-> | `@*for-range-declaration-with-optional-identifier*@`
+> | `@*declaration-pattern*@:`
+> | `    @*attribute-specifier-seq~opt~ pattern-type-id pattern-declarator-id~opt~*@`
+> | `    @*attribute-specifier-seq~opt~ type-specifier-seq ref-qualifier~opt~*@ [ @*sb-identifier-list*@ ]`
+> | `@*pattern-type-id*@:`
+> | `    @*type-specifier-seq conversion-declarator~opt~*@`
+> | `@*pattern-declarator-id*@:`
+> | `    @*identifier attribute-specifier-seq~opt~*@`
+> | `    ... @*identifier attribute-specifier-seq~opt~*@`
 
 A declaration pattern initializes a declaration from the current subject. It
-uses the grammar of a *for-range-declaration*: one declarator, no initializer,
-and no storage-class specifiers such as `static` or `thread_local`.
+uses a deliberately restricted declarator. The type portion follows a
+*conversion-type-id*, so it supports pointer, reference, member-pointer, cv,
+attribute, and constrained-placeholder syntax without admitting parenthesized,
+function, or array declarators. A second form admits structured bindings as
+declaration patterns. Storage-class specifiers such as `static` and
+`thread_local` are not permitted.
 
 ```cpp
 value match {
@@ -1764,6 +1776,16 @@ case int
 case const Widget&
 case auto&&
 case std::integral auto
+```
+
+More complicated function and array types can be named with an alias:
+
+```cpp
+using Function = int(double);
+using Array = int[4];
+
+case Function* function
+case Array& array
 ```
 
 `void` and cv-`void` are additionally accepted as type patterns for dependent
@@ -2042,13 +2064,10 @@ General grouping also avoids committing the grammar of later prefix, infix,
 or postfix patterns to today's precedence choices. For example, if a future
 revision adds an as-pattern operator, `(P) @ auto value` can accept any `P`.
 
-The opening `(` does not by itself select pattern grammar. The complete
-parenthesized construct is disambiguated in the same manner as a declaration
-and an expression: if its contents form a complete pattern at the enclosing
-pattern boundary, they are a parenthesized pattern; otherwise the `(` begins
-an ordinary expression, including any postfix or binary continuation after
-the closing `)`. Disambiguation is syntactic and does not retry after semantic
-analysis.
+The opening `(` selects pattern grammar. A parenthesized pattern therefore
+cannot continue as an ordinary postfix or binary expression after its closing
+`)`. An expression that begins with pattern syntax can instead be placed in a
+functional cast whose initializer is parsed as an expression.
 
 ```cpp
 case (north || south)       // parenthesized or-pattern
@@ -2056,25 +2075,29 @@ case (_)                    // parenthesized wildcard pattern
 case ([int x, int y])       // parenthesized decomposition pattern
 case (Widget value)         // parenthesized declaration pattern
 
-case (_ + 1)                // parenthesized expression pattern
-case (value)++              // postfix expression pattern
-case (int)value             // cast expression pattern
-case ([] { return 1; }())   // lambda-call expression pattern
-case ({ int x = 1; x; })    // GNU statement-expression pattern
+case int(value)             // functional-cast expression pattern
+case auto(value)            // placeholder functional-cast expression pattern
+case auto(_ + 1)            // expression using an outer `_`
+case auto((value)++)        // postfix expression pattern
+case auto((int)value)       // C-style cast expression pattern
+case auto([] { return 1; }()) // lambda-call expression pattern
+case auto(({ int x = 1; x; })) // GNU statement-expression pattern
 ```
 
-When both interpretations form a complete construct, pattern grammar takes
-priority. Consequently `(A || B)` groups an or-pattern. To match the result of
-logical-or, use an unambiguous expression such as `bool(A || B)`. To match an
-outer variable named `_`, use an expression spelling such as `+_` where
-appropriate or the general `auto{_}`.
+Consequently `(A || B)` groups an or-pattern. To match the result of
+logical-or, use an unambiguous expression such as `bool(A || B)`. A bare `_`
+always starts a wildcard pattern, and `[` always starts a decomposition
+pattern. To match an expression beginning with either token, use a spelling
+such as `auto(_ + 1)` or `auto([] { return 1; }())`. Unary operators remain
+unambiguous expression starts, so `+_` is also available where appropriate.
 
-CWG issue 2228 introduces *nofun-type-id* to resolve a closely related
-language ambiguity: `(T())` should be a parenthesized construction expression,
-not an always-ill-formed cast to a function type. The type-pattern grammar
-should reuse that distinction. In particular, giving `(T())` its ordinary
-expression meaning does not require giving `(A || B)` expression priority over
-the or-pattern grammar.
+The declaration-pattern grammar resolves the declaration/expression overlap
+without another priority rule. `T(x)`, `T()`, `bool(x)`, and `auto(x)` cannot
+complete as declaration patterns because a *conversion-declarator* contains
+only pointer operators. They therefore retain their ordinary expression
+meaning. This reaches the same result as the *nofun-type-id* direction in CWG
+issue 2228 for `(T())`, while still allowing `(T value)` to group a declaration
+pattern.
 
 ### Alternative Pattern (R6)
 
@@ -2543,22 +2566,52 @@ Parentheses select a larger subject when needed:
 (a + b) match { /* ... */ }
 ```
 
+This precedence determines the extent of the subject and how the completed
+match expression composes with surrounding expressions. It does not parse the
+pattern as an ordinary right operand at that precedence. The `case` keyword
+enters the pattern grammar, which consumes the complete pattern before
+expression parsing resumes:
+
+```cpp
+value match case a * b     // expression pattern `a * b`
+value match case T * x     // declaration pattern `T* x`, if `T` names a type
+(value match case a) * b   // multiplication outside the match
+```
+
+This kind of grammar-defined operand is established C++ practice. Most
+notably, the right operand of `?:` is an *assignment-expression*, so
+`condition ? first : target = source` is parsed as
+`condition ? first : (target = source)` even though assignment otherwise has
+lower precedence than `?:`. The middle operand provides an additional example:
+it is an *expression*, so `condition ? first, second : third` includes the
+comma expression in that operand. `throw` and `co_yield` similarly select an
+*assignment-expression* operand directly in their grammar. A pattern is more
+than an expression, so `case` introduces its corresponding grammar in the same
+way. Informally, pattern parsing is greedy: it consumes the largest complete
+pattern admitted by that grammar. Parentheses around the completed match test
+resume ordinary expression parsing at an earlier point.
+
 Declaration, type, and expression patterns intentionally occupy one syntactic
 position. The design uses these disambiguation rules:
 
-- Classification considers the complete candidate through its pattern
-  boundary. No initial token or token pair commits to pattern interpretation.
-  For example, `_` and `[]` are patterns, while `_ + 1` and `[]{}()` are
-  expression patterns.
-- A complete type pattern takes precedence over an expression interpretation.
-  The exact type grammar should follow CWG issue 2228's *nofun-type-id*
-  distinction so that an apparent cast to a function type remains an
-  expression instead.
-- Declaration-versus-expression ambiguity otherwise follows ordinary
-  block-scope declaration rules, restricted to one for-range-style declarator.
-- A leading `(` starts a complete-construct disambiguation. It forms a
-  parenthesized pattern only when the contents complete as a pattern at the
-  enclosing pattern boundary; otherwise it starts an ordinary expression.
+- Pattern-specific introducers commit to pattern grammar. In particular, `_`
+  starts a wildcard pattern, `(` starts a parenthesized pattern, `[` starts a
+  decomposition pattern, and `{` starts an alternative pattern. `_ + 1`,
+  `(x) + 1`, and `[]{}()` are therefore ill-formed as patterns; functional
+  casts such as `auto(_ + 1)`, `auto((x) + 1)`, and `auto([]{}())` provide an
+  explicit expression spelling.
+- A declaration pattern uses a *type-specifier-seq* followed by an optional
+  *conversion-declarator* and optional identifier. Consequently `T value`,
+  `T* pointer`, and `T&& reference` are declarations, while `T(value)`, `T()`,
+  and `auto(value)` are expressions. Lookup determines whether the first name
+  is a type; there is no additional declaration-over-expression priority rule.
+- A structured-binding declaration is also a declaration pattern. Its opening
+  `[` is recognized only after a complete structured-binding decl-specifier
+  sequence.
+- `[[` is the sole overlapping pattern introducer. It is parsed as an
+  attribute when it forms a complete attribute-specifier and the following
+  token can continue the surrounding declaration; otherwise it starts nested
+  decomposition. Ordinary and pattern structured bindings use the same rule.
 - In `case P = E`, the first top-level `=` terminates the pattern.
 - In a pattern condition, each ordinary Boolean element and each case subject
   is an *inclusive-or-expression*. A top-level `&&` separates condition
@@ -2659,9 +2712,24 @@ case auto&& forwarded
 case std::integral auto integer
 ```
 
-The declaration grammar follows the restrictions of a
-*for-range-declaration*: one declarator, no initializer, and no storage-class
-forms such as `static` or `thread_local`.
+The declaration grammar uses a *type-specifier-seq*, an optional
+*conversion-declarator*, and an optional identifier with attributes. It also
+admits structured-binding declarations. This supports the familiar scalar,
+pointer, reference, member-pointer, constrained-placeholder, and structured-
+binding forms without inheriting the whole declarator grammar:
+
+```cpp
+case int value
+case const Widget& reference
+case int Owner::* member
+case std::integral auto integer
+case auto&& [first, second]
+```
+
+In particular, `T(value)`, `bool(value)`, and `auto(value)` are expression
+patterns rather than declarations. Function and array declarators require a
+type alias. Storage-class forms such as `static` and `thread_local` are not
+permitted.
 
 The usual declaration rules determine:
 
@@ -6289,26 +6357,31 @@ precedence. The prototype adds `match` at its selected precedence and decides
 between a selection, `match constexpr`, a trailing return type, and a
 single-pattern test after consuming the contextual keyword.
 
-Requiring `case` gives every case a reliable recovery point. Inside a
-pattern, however, expressions and declarations intentionally share one
-position. The parser uses C++'s existing simple-declaration classifier, with a
-for-range-style declarator whose identifier may be omitted, before falling
-back to expression parsing.
+Requiring `case` gives every case a reliable recovery point. Within a pattern,
+pattern-specific introducers commit immediately: `_`, `(`, `[`, and `{` begin
+wildcard, parenthesized, decomposition, and alternative patterns,
+respectively. They are not tentatively reparsed as expressions after a later
+token. Expressions such as `_ + 1`, `(x) + 1`, lambda calls, and GNU
+statement-expressions use an explicit functional-cast spelling when they occur
+as patterns.
 
-Every ambiguous primary-pattern position receives a syntax-only
-classification. No prefix is sufficient: `_` can begin `_ + 1`, `[` can begin
-`[]{}()`, `(_` can begin `(_ + 1)`, `([` can begin `([]{}())`, and `({` can
-begin a GNU statement-expression. The prototype tentatively classifies the
-complete construct without performing semantic actions, then parses it exactly
-once as either a pattern or an expression. This follows the same general
-principle as declaration-versus-expression disambiguation.
+Declarations and expressions continue to share one position. The parser
+recognizes a restricted declaration prefix consisting of a
+*type-specifier-seq* and *conversion-declarator*. A following `(` or `{` cannot
+continue that declarator and therefore begins a functional-cast expression;
+otherwise the parser commits to the declaration pattern. This requires normal
+C++ type lookup but no complete-pattern classification.
 
 Attributes need additional care because `[[` can begin either an attribute or
-a nested decomposition pattern. The prototype only attempts the declaration
-attribute interpretation when skipping the attributes leaves a viable simple
-declaration; otherwise `[` begins structural pattern parsing. The parser only
-tentatively classifies this opening. It does not parse and rebuild an entire
-pattern.
+a nested decomposition pattern. The parser accepts an attribute interpretation
+when it forms a complete attribute-specifier and the following token can
+continue the surrounding declaration; otherwise `[` begins structural pattern
+parsing. The same probe is used by ordinary nested structured bindings and
+declaration patterns. For example,
+`[[likely]] case [[maybe_unused]] auto [x, y]` has a case attribute followed by
+a declaration attribute, while `case [[_, _], _]` begins a decomposition
+pattern. This is the only pattern introducer requiring structurally unbounded
+lookahead, and it only scans one balanced attribute candidate.
 
 `case P = E` introduces another parsing boundary. The first top-level `=`
 terminates the pattern, and direct-condition operands stop at top-level `&&`.
@@ -6371,8 +6444,6 @@ identity for discriminators from cache identity for selected projections.
   restricted than `if`.
 - The `alternative_traits` model for C++26 `optional<T&>` still needs to
   preserve its reference projection without forming a pointer-to-reference.
-- The type-pattern branch of parenthesized disambiguation still needs the
-  `nofun-type-id` distinction from CWG issue 2228.
 - Debug information and AST presentation for synthetic declarations and
   implicit template regions need production-quality design.
 - The current lowering does not preserve a first-class match decision DAG into
@@ -6436,49 +6507,40 @@ in the operator precedence table.
 
 ## Parsing the Parenthesized Pattern
 
-::: note
-This subsection records the R6 parser strategy. The earlier prototype
-committed to pattern grammar immediately after seeing `(`; that approach was
-too early.
-:::
-
-Pattern interpretation is selected only after a complete candidate reaches a
-pattern boundary. For example, `_` is a wildcard pattern even if a variable
-named `_` is in scope, while `*_` and `_ + 1` are expression patterns.
+Pattern-specific introducers commit immediately. For example, `_` is a
+wildcard pattern even if a variable named `_` is in scope, while `*_` is an
+expression pattern and `_ + 1` is ill-formed.
 
 ```cpp
 expr match {
   _ => // wildcard pattern
   *_ => // dereference
-  _ + 1 => // addition using an outer variable named `_`
-  []{}() => // lambda-call expression
+  auto(_ + 1) => // addition using an outer variable named `_`
+  auto([]{}()) => // lambda-call expression
   [] => // empty decomposition pattern
 }
 ```
 
-Parentheses make the overlap particularly visible. None of the apparent
-pattern starts is conclusive:
+Parentheses always group a pattern. Expressions beginning with pattern syntax
+use a functional-cast spelling:
 
 ```cpp
-(_ + 1)
-([]{}())
-({ int x = 1; x; })
-(T)value
-(auto(value))
+auto(_ + 1)
+auto([]{}())
+auto(({ int x = 1; x; }))
+auto((T)value)
+auto(value)
 ```
 
-The parser instead performs a syntax-only tentative classification through the
-matching `)` and the enclosing pattern boundary. The tentative pass builds no
-AST and introduces no declarations. It recognizes pattern-only structure,
-including wildcard, decomposition, declaration, parenthesized, and or-pattern
-forms, while treating an ordinary expression as an opaque token sequence.
-After classification, the construct is parsed semantically exactly once.
+The parser does not scan a complete parenthesized or decomposition candidate
+and then retry it as an expression. Complete constructs such as `(A || B)`,
+`(int value)`, `([P...])`, and `(_)` retain their pattern meaning, while the
+functional-cast operand is parsed by the ordinary expression grammar.
 
-This restores ordinary expression behavior for `(x) + y`, `(x)++`, C-style
-casts, parenthesized assignment, conditional, and comma expressions, lambda
-calls, and GNU statement-expressions. It still gives pattern meaning to
-complete constructs such as `(A || B)`, `(int value)`, `([P...])`, and `(_)`.
-The choice is syntactic; semantic failure does not cause reinterpretation.
+The remaining `[[` ambiguity is shared with nested structured-binding
+declarations. A localized probe scans one complete attribute candidate and
+checks whether the next token can continue the surrounding declaration. It
+does not classify or rebuild an arbitrary complete pattern.
 
 # Questions Before Wording
 
