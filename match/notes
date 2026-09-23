@@ -1,0 +1,373 @@
+## Prototype Limitations
+
+- Polymorphic casting does not yet implement every valid cross-cast.
+- Modules and complete tooling support remain deferred.
+- Some direct loop conditions that require case instantiation are still more
+  restricted than `if`.
+- The prototype still accepts arity-inferred `[Widget ...]` and does not yet
+  correctly instantiate a fixed type-pack expansion such as `[Types...]`.
+- The `alternative_traits` model for C++26 `optional<T&>` still needs to
+  preserve its reference projection without forming a pointer-to-reference.
+- Debug information and AST presentation for synthetic declarations and case
+  instantiations need production-quality design.
+- The current lowering does not preserve a first-class match decision DAG into
+  LLVM IR.
+
+
+# Open Design Questions
+
+The remaining design questions are:
+
+1. Complete the declaration-pattern rules for bit-fields, arrays, and
+   functions. Exact-match applicability, direct derived-to-base reference
+   binding, and omitted-name behavior are otherwise settled.
+2. Finalize the `alternative_traits` names, malformed-specialization behavior,
+   and header availability.
+3. Complete the implicit template-region rules for captures and local-static
+   identity. Per-alternative instantiation, diagnostics, and result deduction
+   are otherwise settled.
+4. Resolve enumerator policy for `[[maybe_unused]]`, unavailable enumerators,
+   and duplicate values.
+5. Decide whether a dependent case that is provably useless for every valid
+   substitution, such as a three-element decomposition of a built-in
+   two-element array, must be diagnosed or can remain conservatively maybe
+   useful.
+
+
+# Appendix B: Evidence from Existing C++ {#existing-cxx-evidence}
+
+We surveyed pinned revisions of [Chromium](https://github.com/chromium/chromium/tree/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5) and [LLVM](https://github.com/llvm/llvm-project/tree/52a463254a82be0bcd75f0b7cbfe4728e31c1b26). The survey covered approximately 13.29 million lines in 72,503 non-test Chromium files and 6.50 million lines in 12,366 non-test LLVM files. The examples below are representative rewrites, not changes submitted to those projects. The same forms appeared repeatedly:
+
+| Existing form | Operation being expressed |
+|---|---|
+| `std::visit(overloaded{/* visitors */})` | Dispatch by active alternative and name it |
+| `get_if` / `holds_alternative` chains | Ordered runtime type dispatch |
+| `switch (v.index())` plus `get<I>` | Dispatch by state, then project |
+| `has_value()` / `hasError()` branches | Split value, empty, and error states |
+| `dynamic_cast` chains | Match through runtime polymorphic casts |
+| Generic visitor plus an inner value test | Apply one pattern across alternatives |
+| Nested tests over tuple members | Compose type, value, and structure tests |
+
+Most `variant` code names a concrete alternative. Handling an alternative
+generically and matching the same structure across several alternatives are
+less common, but both show up in real code and are important for a C++ sum
+type.
+
+## Values and Enums
+
+The smallest use case remains a direct replacement for a value `switch`:
+
+```cpp
+switch (value) {
+case 0:
+  zero();
+  break;
+case 1:
+  one();
+  break;
+default:
+  other();
+  break;
+}
+```
+
+```cpp
+match (value) {
+  case 0 => zero();
+  case 1 => one();
+  case _ => other();
+}
+```
+
+Unlike `switch`, the patterns can be nested inside decomposition and alternative
+patterns. Unlike a visitor, the cases remain ordered and can be checked for
+exhaustiveness.
+
+## Replacing Visitor Ceremony
+
+The following is typical code that turns several variant alternatives into one
+result type. Chromium's [`EnterpriseCompanionStatus::code()`](https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/chrome/enterprise_companion/enterprise_companion_status.h#L80-L85) is a compact public example; LLVM's [artifact serializer](https://github.com/llvm/llvm-project/blob/52a463254a82be0bcd75f0b7cbfe4728e31c1b26/clang/lib/ScalableStaticAnalysis/Core/Serialization/JSONFormat/Artifact.cpp#L188-L208) uses a generic visitor followed by an `if constexpr` chain:
+
+```cpp
+return std::visit(
+    overloaded{
+        [](shared_ptr<const IdentifierRecord> record) {
+          return ResultValue(record->value);
+        },
+        [](shared_ptr<const Parameter> parameter) {
+          return ResultValue(clone(parameter->value));
+        },
+        [](uint64_t value) {
+          return ResultValue(static_cast<int64_t>(value));
+        },
+        [](auto&& value) {
+          return ResultValue(
+              std::forward<decltype(value)>(value));
+        }},
+    std::move(input));
+```
+
+With pattern matching:
+
+```cpp
+return match (std::move(input)) -> ResultValue {
+  case { shared_ptr<const IdentifierRecord> record }
+    => ResultValue(record->value);
+
+  case { shared_ptr<const Parameter> parameter }
+    => ResultValue(clone(parameter->value));
+
+  case { uint64_t value }
+    => ResultValue(static_cast<int64_t>(value));
+
+  case { auto&& value }
+    => ResultValue(std::forward<decltype(value)>(value));
+};
+```
+
+The braces say to match the active alternative rather than the `variant`
+itself. The final case is instantiated for every remaining alternative and
+preserves its value category.
+
+## One Structural Pattern Across Several Alternatives
+
+The following example handles one tuple alternative by naming its concrete
+tuple type and calling `get`:
+
+```cpp
+return std::visit(
+    overloaded{
+        [](const CompositeKey& key) {
+          return records().lookup(
+              std::get<0>(key), std::get<1>(key));
+        },
+        [](reference_wrapper<const Record> ref) {
+          return ref.get().view();
+        },
+        [](const auto&) -> RecordView {
+          throw invalid_argument("unsupported record reference");
+        }},
+    input);
+```
+
+The pattern version expresses the relevant structure instead of one nominal
+tuple type:
+
+```cpp
+return match (input) -> RecordView {
+  case { [auto&& first, auto&& second] }
+    => records().lookup(first, second);
+
+  case { reference_wrapper<const Record> ref }
+    => ref.get().view();
+
+  case { _ }
+    => throw invalid_argument("unsupported record reference");
+};
+```
+
+The same case can match a `pair`, `tuple`, array, or user-defined type with the
+same two-element shape.
+
+## Applying One Value Pattern Across Alternatives
+
+Here is a similar example that checks numeric telemetry values:
+
+```cpp
+using MetricValue =
+    variant<int16_t, int32_t, int64_t, float, double>;
+
+return ranges::all_of(metrics, [](const auto& item) {
+  return std::visit(
+      [](auto value) { return value == 0; },
+      item.second);
+});
+```
+
+The pattern applies `0` to every projected alternative for which the
+comparison is viable:
+
+```cpp
+return ranges::all_of(metrics, [](const auto& item) {
+  return match (item.second) {
+    case { 0 } => true;
+    case _    => false;
+  };
+});
+```
+
+This is an important example. `{ P }` cannot just be syntax for declaring a
+payload of type `T`. The outer braces select an alternative, and the inner `0`
+matches its value.
+
+## Optional and Expected States
+
+An optional value currently requires a test followed by a projection. Chromium's [`StringViewOrString::get()`](https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/base/base64url.cc#L27-L41) is a small example of this form:
+
+```cpp
+auto value = parseIntegerText(input);
+if (!value.has_value()) {
+  throw ParseError(fieldName, "expected an integer");
+}
+return std::move(*value);
+```
+
+Pattern matching can name both states directly:
+
+```cpp
+return match (parseIntegerText(input)) -> string {
+  case { string value }
+    => std::move(value);
+
+  case {}
+    => throw ParseError(fieldName, "expected an integer");
+};
+```
+
+Expected-like types naturally use named states:
+
+```cpp
+match (loadResources()) {
+  case { .value: auto&& resources }
+    => context.resources = std::move(resources);
+
+  case { .error: const string& error }
+    => return unexpected(format_error(error));
+}
+```
+
+`{}` does not specifically mean `nullopt`. It matches a state that has no
+value to project. Named states come from the type's `alternative_traits`.
+
+## Matching Representation Shape
+
+A configuration type can use a `variant` of five tuple shapes:
+
+```cpp
+variant<
+    tuple<UniformMode, T>,
+    tuple<DeltaMode, T>,
+    tuple<ClobberMode, T>,
+    tuple<DeltaMode, T, T>,
+    tuple<ClobberMode, T, T>>
+    value;
+```
+
+The original code contained one visitor overload per alternative. A property
+that depends only on tuple arity becomes:
+
+```cpp
+bool has_secondary() const {
+  return match (value) {
+    case { [_, _, _] } => true;
+    case { [_, _] }    => false;
+  };
+}
+```
+
+Selecting the delta component composes type, structure, and name introduction:
+
+```cpp
+const T* delta() const {
+  return match (value) -> const T* {
+    case { [DeltaMode, const auto& delta] }
+      => &delta;
+
+    case { [DeltaMode, const auto& delta, _] }
+      => &delta;
+
+    case { [ClobberMode, _, const auto& delta] }
+      => &delta;
+
+    case _ => nullptr;
+  };
+}
+```
+
+## Matching Several Values
+
+The parenthesized subject list can contain several expressions. Code that
+merges two compact-or-expanded keyed representations commonly contains a
+nested matrix of `holds_alternative` and `get_if` tests. The state space can
+instead be made explicit by matching the two values directly:
+
+```cpp
+using SingleEntry = pair<Key, Values>;
+using EntryMap = folly::F14FastMap<Key, Values>;
+using Entries = variant<monostate, SingleEntry, EntryMap>;
+
+void merge(Entries& destination, Entries&& source) {
+  match (std::move(source), destination) {
+    case [{ monostate }, _] => ;
+
+    case [{ auto&& value }, { monostate }]
+      => destination = std::move(value);
+
+    case [{ auto&& [sourceKey, sourceValue] },
+          { auto&& [destinationKey, destinationValue] }] => do {
+      if (sourceKey != destinationKey) {
+        EntryMap map;
+        map.emplace(destinationKey, std::move(destinationValue));
+        map.emplace(sourceKey, std::move(sourceValue));
+        destination = std::move(map);
+      }
+    };
+
+    case [{ auto&& [key, value] }, { EntryMap& map }]
+      => map.try_emplace(key, std::move(value));
+
+    case [{ EntryMap&& map }, { auto&& [key, value] }] => do {
+      map.insert_or_assign(key, std::move(value));
+      destination = std::move(map);
+    };
+
+    case [{ EntryMap&& sourceMap }, { EntryMap& destinationMap }] => do {
+      for (auto&& [key, value] : sourceMap)
+        destinationMap.try_emplace(key, std::move(value));
+    };
+  }
+}
+```
+
+This makes all of the combinations visible without constructing a named or
+library product.
+
+## Visitor Replacement Is Not Purely Mechanical
+
+Overload selection and first-match pattern coverage are different. This
+visitor does nothing for a nonzero `int`; the generic overload is never called:
+
+```cpp
+visit(overloaded{
+  [](int value) {
+    if (value == 0)
+      zero();
+  },
+  [](const auto&) {
+    other();
+  }
+}, value);
+```
+
+A naive rewrite changes behavior:
+
+```cpp
+match (value) {
+  case { 0 } => zero();
+  case { _ } => other(); // also handles nonzero int
+}
+```
+
+The faithful rewrite explicitly covers the rest of the `int` alternative:
+
+```cpp
+match (value) {
+  case { 0 }   => zero();
+  case { int } => ;
+  case { _ }   => other();
+}
+```
+
+This is an important difference between a visitor overload set and ordered,
+composable patterns. A rewrite needs to preserve it explicitly.
+

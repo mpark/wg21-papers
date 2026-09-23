@@ -1,0 +1,201 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 718"
+     role="img" aria-labelledby="title description">
+  <title id="title">Patterns match a variant from the outside in</title>
+  <desc id="description">A variant of int or string moves through two cases. The alternative pattern keeps the variant visible and creates a nested subject containing int 42. The string declaration fails. The int declaration binds x to 42 and runs print(x).</desc>
+
+  <style>
+    text {
+      fill: #1d2939;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+    .code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .canvas { fill: #fbfcfa; stroke: #d0d5dd; }
+    .title { font-size: 22px; font-weight: 650; }
+    .rail { stroke: #98a2b3; stroke-dasharray: 4 6; }
+    .case-frame, .pattern-frame { fill: #fff; stroke: #cbd2d9; stroke-width: 2; }
+    .pattern-frame { fill: #f8fafc; stroke-width: 1.5; }
+    .case-frame.success, .pattern-frame.success { fill: #ecf8f3; stroke: #19765c; }
+    .case-frame.failure, .pattern-frame.failure { fill: #fff4f2; stroke: #b5473c; }
+    .case-label { font-size: 17px; font-weight: 650; }
+    .handler { fill: #667085; font-size: 16px; font-weight: 600; }
+    .case-status, .node-status { font-size: 11px; font-weight: 750; }
+    .success { fill: #19765c; }
+    .failure { fill: #b5473c; }
+    .node-kind { fill: #667085; font-size: 10px; font-weight: 750; }
+    .node-syntax { font-size: 14px; font-weight: 650; }
+    .subject-box { fill: #293241; stroke: #18212f; stroke-width: 2; }
+    .subject-name { fill: #fff; font-size: 14px; font-weight: 700; }
+    .subject-detail { fill: #ffd98a; font-size: 12px; font-weight: 650; }
+    .binding { fill: #19765c; font-size: 13px; font-weight: 700; }
+    .root-subject { transform-box: fill-box; }
+
+    @keyframes root-subject-travel {
+      0.00% { transform: translateY(-419px); }
+      6.76% { transform: translateY(-419px); }
+      10.81% { transform: translateY(-308px); }
+      36.49% { transform: translateY(-308px); }
+      41.89% { transform: translateY(-308px); }
+      45.95% { transform: translateY(0px); }
+      71.62% { transform: translateY(0px); }
+      100.00% { transform: translateY(0px); }
+    }
+
+    @keyframes case-result-0 {
+      0%, 30.41% { fill: #ffffff; stroke: #cbd2d9; }
+      32.43%, 100% { fill: #fff4f2; stroke: #b5473c; }
+    }
+
+    @keyframes case-status-0 {
+      0%, 30.41% { opacity: 0; }
+      32.43%, 100% { opacity: 1; }
+    }
+
+    @keyframes node-result-0 {
+      0%, 27.70% { fill: #ffffff; stroke: #cbd2d9; }
+      29.73%, 100% { fill: #fff4f2; stroke: #b5473c; }
+    }
+
+    @keyframes node-result-1 {
+      0%, 23.65% { fill: #ffffff; stroke: #cbd2d9; }
+      25.68%, 100% { fill: #fff4f2; stroke: #b5473c; }
+    }
+
+    @keyframes subject-reveal-1 {
+      0%, 15.54% { opacity: 0; }
+      17.57%, 100% { opacity: 1; }
+    }
+
+    @keyframes status-reveal-1 {
+      0%, 23.65% { opacity: 0; }
+      25.68%, 100% { opacity: 1; }
+    }
+
+    @keyframes root-history-0 {
+      0%, 34.46% { opacity: 0; }
+      36.49%, 100% { opacity: 0.42; }
+    }
+
+    @keyframes case-result-1 {
+      0%, 65.54% { fill: #ffffff; stroke: #cbd2d9; }
+      67.57%, 100% { fill: #ecf8f3; stroke: #19765c; }
+    }
+
+    @keyframes case-status-1 {
+      0%, 65.54% { opacity: 0; }
+      67.57%, 100% { opacity: 1; }
+    }
+
+    @keyframes handler-highlight-1 {
+      0%, 69.59% { fill: #667085; }
+      71.62%, 100% { fill: #19765c; }
+    }
+
+    @keyframes node-result-0 {
+      0%, 62.84% { fill: #ffffff; stroke: #cbd2d9; }
+      64.86%, 100% { fill: #ecf8f3; stroke: #19765c; }
+    }
+
+    @keyframes node-result-1 {
+      0%, 58.78% { fill: #ffffff; stroke: #cbd2d9; }
+      60.81%, 100% { fill: #ecf8f3; stroke: #19765c; }
+    }
+
+    @keyframes subject-reveal-1 {
+      0%, 50.68% { opacity: 0; }
+      52.70%, 100% { opacity: 1; }
+    }
+
+    @keyframes status-reveal-1 {
+      0%, 58.78% { opacity: 0; }
+      60.81%, 100% { opacity: 1; }
+    }
+
+    @keyframes binding-reveal-1 {
+      0%, 61.49% { opacity: 0; }
+      63.51%, 100% { opacity: 1; }
+    }
+
+    @media print, (prefers-reduced-motion: reduce) {
+      .case-frame,
+      .pattern-frame,
+      .subject-token,
+      .case-status,
+      .node-status,
+      .binding,
+      .handler {
+        animation: none !important;
+      }
+    }
+  </style>
+
+  <rect class="canvas" x="1" y="1" width="1098" height="716" rx="8"/>
+  <text class="title" x="42" y="42">Patterns match values from the outside in</text>
+  <line class="rail" x1="400" y1="58" x2="400" y2="700"/>
+
+    <g class="match-case">
+      <rect class="case-frame failure" x="55" y="95" width="990" height="290" rx="8"
+            style="animation: case-result-0 8s ease-in-out infinite"/>
+      <text class="case-label code" x="73" y="122">case</text>
+      <text class="handler code" x="650" y="123">=&gt; print(text);</text>
+      <text class="case-status failure" x="1027" y="122" text-anchor="end"
+            style="animation: case-status-0 8s ease-in-out infinite">CONTINUE</text>
+
+      <g class="pattern-node depth-0">
+        <rect class="pattern-frame failure" x="220" y="137" width="360" height="224" rx="8" style="animation: node-result-0 8s ease-in-out infinite"/>
+        <text class="node-kind" x="234" y="157">ALTERNATIVE PATTERN</text>
+        <text class="node-syntax code" x="566" y="158" text-anchor="end">{ P }</text>
+      <g class="pattern-node depth-1">
+        <rect class="pattern-frame failure" x="245" y="235" width="310" height="116" rx="8" style="animation: node-result-1 8s ease-in-out infinite"/>
+        <text class="node-kind" x="259" y="255">NESTED PATTERN</text>
+        <text class="node-syntax code" x="541" y="256" text-anchor="end">std::string text</text>
+      <g class="subject-token projected-subject" style="animation: subject-reveal-1 8s ease-in-out infinite">
+        <rect class="subject-box" x="312" y="271" width="176" height="50" rx="7"/>
+        <text class="subject-name code" x="400" y="291" text-anchor="middle">int</text>
+        <text class="subject-detail code" x="400" y="310" text-anchor="middle">42</text>
+      </g>
+        <text class="node-status failure" x="543" y="338" text-anchor="end"
+              style="animation: status-reveal-1 8s ease-in-out infinite">NO MATCH</text>
+      </g>
+      </g>
+    </g>
+      <g class="subject-token root-history" style="animation: root-history-0 8s ease-in-out infinite">
+        <rect class="subject-box" x="312" y="173" width="176" height="50" rx="7"/>
+        <text class="subject-name code" x="400" y="193" text-anchor="middle">value</text>
+        <text class="subject-detail code" x="400" y="212" text-anchor="middle">variant&lt;int, string&gt;</text>
+      </g>
+    <g class="match-case">
+      <rect class="case-frame success" x="55" y="403" width="990" height="290" rx="8"
+            style="animation: case-result-1 8s ease-in-out infinite"/>
+      <text class="case-label code" x="73" y="430">case</text>
+      <text class="handler code" x="650" y="431" style="animation: handler-highlight-1 8s ease-in-out infinite">=&gt; print(x);</text>
+      <text class="case-status success" x="1027" y="430" text-anchor="end"
+            style="animation: case-status-1 8s ease-in-out infinite">SELECTED</text>
+
+      <g class="pattern-node depth-0">
+        <rect class="pattern-frame success" x="220" y="445" width="360" height="224" rx="8" style="animation: node-result-0 8s ease-in-out infinite"/>
+        <text class="node-kind" x="234" y="465">ALTERNATIVE PATTERN</text>
+        <text class="node-syntax code" x="566" y="466" text-anchor="end">{ P }</text>
+      <g class="pattern-node depth-1">
+        <rect class="pattern-frame success" x="245" y="543" width="310" height="116" rx="8" style="animation: node-result-1 8s ease-in-out infinite"/>
+        <text class="node-kind" x="259" y="563">NESTED PATTERN</text>
+        <text class="node-syntax code" x="541" y="564" text-anchor="end">int x</text>
+      <g class="subject-token projected-subject" style="animation: subject-reveal-1 8s ease-in-out infinite">
+        <rect class="subject-box" x="312" y="579" width="176" height="50" rx="7"/>
+        <text class="subject-name code" x="400" y="599" text-anchor="middle">int</text>
+        <text class="subject-detail code" x="400" y="618" text-anchor="middle">42</text>
+      </g>
+        <text class="node-status success" x="543" y="646" text-anchor="end"
+              style="animation: status-reveal-1 8s ease-in-out infinite">MATCH</text>
+        <text class="binding code" x="259" y="646"
+              style="animation: binding-reveal-1 8s ease-in-out infinite">x = 42</text>
+      </g>
+      </g>
+    </g>
+
+      <g class="subject-token root-subject" style="animation: root-subject-travel 8s ease-in-out infinite">
+        <rect class="subject-box" x="312" y="481" width="176" height="50" rx="7"/>
+        <text class="subject-name code" x="400" y="501" text-anchor="middle">value</text>
+        <text class="subject-detail code" x="400" y="520" text-anchor="middle">variant&lt;int, string&gt;</text>
+      </g>
+</svg>

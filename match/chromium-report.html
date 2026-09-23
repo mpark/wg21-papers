@@ -1,0 +1,1776 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="mpark/wg21" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <meta name="dcterms.date" content="2026-09-01" />
+  <title>Pattern Matching Usage in Chromium</title>
+  <style>
+
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+
+ul.task-list[class]{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+font-size: inherit;
+width: 0.8em;
+margin: 0 0.8em 0.2em -1.6em;
+vertical-align: middle;
+}
+
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+{ counter-reset: source-line 0; }
+pre.numberSource code > span
+{ position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+{ content: counter(source-line);
+position: relative; left: -1em; text-align: right; vertical-align: baseline;
+border: none; display: inline-block;
+-webkit-touch-callout: none; -webkit-user-select: none;
+-khtml-user-select: none; -moz-user-select: none;
+-ms-user-select: none; user-select: none;
+padding: 0 4px; width: 4em;
+color: #aaaaaa;
+}
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa; padding-left: 4px; }
+div.sourceCode
+{ background-color: #f6f8fa; }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span { } 
+code span.al { color: #ff0000; } 
+code span.an { } 
+code span.at { } 
+code span.bn { color: #9f6807; } 
+code span.bu { color: #9f6807; } 
+code span.cf { color: #00607c; } 
+code span.ch { color: #9f6807; } 
+code span.cn { } 
+code span.co { color: #6a737d; font-style: italic; } 
+code span.cv { color: #6a737d; font-style: italic; } 
+code span.do { color: #6a737d; } 
+code span.dt { color: #00607c; } 
+code span.dv { color: #9f6807; } 
+code span.er { color: #ff0000; font-weight: bold; } 
+code span.ex { } 
+code span.fl { color: #9f6807; } 
+code span.fu { } 
+code span.im { } 
+code span.in { color: #6a737d; } 
+code span.kw { color: #00607c; } 
+code span.op { color: #7b3e91; } 
+code span.ot { } 
+code span.pp { color: #6f4e37; } 
+code span.re { } 
+code span.sc { color: #9f6807; } 
+code span.ss { color: #9f6807; } 
+code span.st { color: #9f6807; } 
+code span.va { } 
+code span.vs { color: #9f6807; } 
+code span.wa { color: #6a737d; font-weight: bold; } 
+</style>
+  <style type="text/css">
+body {
+margin: 5em;
+font-family: serif;
+
+hyphens: auto;
+line-height: 1.35;
+text-align: justify;
+}
+@media screen and (max-width: 30em) {
+body {
+margin: 1.5em;
+}
+}
+div.wrapper {
+max-width: 60em;
+margin: auto;
+}
+ul {
+list-style-type: none;
+padding-left: 2em;
+margin-top: -0.2em;
+margin-bottom: -0.2em;
+}
+a {
+text-decoration: none;
+color: #4183C4;
+}
+a.hidden_link {
+text-decoration: none;
+color: inherit;
+}
+li {
+margin-top: 0.6em;
+margin-bottom: 0.6em;
+}
+h1, h2, h3, h4 {
+position: relative;
+line-height: 1;
+}
+a.self-link {
+position: absolute;
+top: 0;
+left: calc(-1 * (3.5rem - 26px));
+width: calc(3.5rem - 26px);
+height: 2em;
+text-align: center;
+border: none;
+transition: opacity .2s;
+opacity: .5;
+font-family: sans-serif;
+font-weight: normal;
+font-size: 83%;
+}
+a.self-link:hover { opacity: 1; }
+a.self-link::before { content: "§"; }
+ul > li:before {
+content: "\2014";
+position: absolute;
+margin-left: -1.5em;
+}
+:target { background-color: yellow; }
+:target .codeblock { background-color: yellow; }
+:target .sourceCode { background-color: yellow; }
+:target ul { background-color: yellow; }
+p:has(> span.marginalizedparent > a.marginalized:target),
+li:has(> span.marginalizedparent > a.marginalized:target) {
+background-color: yellow;
+}
+a.marginalized:target { background-color: transparent; }
+.abbr_ref { float: right; }
+.folded_abbr_ref { float: right; }
+:target .folded_abbr_ref { display: none; }
+:target .unfolded_abbr_ref { float: right; display: inherit; }
+.unfolded_abbr_ref { display: none; }
+.secnum { display: inline-block; min-width: 35pt; }
+.header-section-number { display: inline-block; min-width: 35pt; }
+.annexnum { display: block; }
+div.sourceLinkParent {
+float: right;
+}
+a.sourceLink {
+position: absolute;
+opacity: 0;
+margin-left: 10pt;
+}
+a.sourceLink:hover {
+opacity: 1;
+}
+a.itemDeclLink {
+position: absolute;
+font-size: 75%;
+text-align: right;
+width: 5em;
+opacity: 0;
+}
+a.itemDeclLink:hover { opacity: 1; }
+span.marginalizedparent {
+position: relative;
+left: -5em;
+}
+li span.marginalizedparent { left: -7em; }
+li ul > li span.marginalizedparent { left: -9em; }
+li ul > li ul > li span.marginalizedparent { left: -11em; }
+li ul > li ul > li ul > li span.marginalizedparent { left: -13em; }
+div.footnoteNumberParent {
+position: relative;
+left: -4.7em;
+}
+a.marginalized {
+position: absolute;
+font-size: 75%;
+text-align: right;
+width: 5em;
+}
+a.enumerated_item_num {
+position: relative;
+left: -3.5em;
+display: inline-block;
+margin-right: -3em;
+text-align: right;
+width: 3em;
+}
+div.para { margin-bottom: 0.6em; margin-top: 0.6em; text-align: justify; }
+div.section { text-align: justify; }
+div.sentence { display: inline; }
+span.indexparent {
+display: inline;
+position: relative;
+float: right;
+right: -1em;
+}
+a.index {
+position: absolute;
+display: none;
+}
+a.index:before { content: "⟵"; }
+
+a.index:target {
+display: inline;
+}
+.indexitems {
+margin-left: 2em;
+text-indent: -2em;
+}
+div.itemdescr {
+margin-left: 3em;
+}
+.bnf {
+font-family: serif;
+margin-left: 40pt;
+margin-top: 0.5em;
+margin-bottom: 0.5em;
+}
+.ncbnf {
+font-family: serif;
+margin-top: 0.5em;
+margin-bottom: 0.5em;
+margin-left: 40pt;
+}
+.ncsimplebnf {
+font-family: serif;
+font-style: italic;
+margin-top: 0.5em;
+margin-bottom: 0.5em;
+margin-left: 40pt;
+background: inherit; 
+}
+span.textnormal {
+font-style: normal;
+font-family: serif;
+white-space: normal;
+display: inline-block;
+}
+span.rlap {
+display: inline-block;
+width: 0px;
+}
+span.descr { font-style: normal; font-family: serif; }
+span.grammarterm { font-style: italic; }
+span.term { font-style: italic; }
+span.terminal { font-family: monospace; font-style: normal; }
+span.nonterminal { font-style: italic; }
+span.tcode { font-family: monospace; font-style: normal; }
+span.textbf { font-weight: bold; }
+span.textsc { font-variant: small-caps; }
+a.nontermdef { font-style: italic; font-family: serif; }
+span.emph { font-style: italic; }
+span.techterm { font-style: italic; }
+span.mathit { font-style: italic; }
+span.mathsf { font-family: sans-serif; }
+span.mathrm { font-family: serif; font-style: normal; }
+span.textrm { font-family: serif; }
+span.textsl { font-style: italic; }
+span.mathtt { font-family: monospace; font-style: normal; }
+span.mbox { font-family: serif; font-style: normal; }
+span.ungap { display: inline-block; width: 2pt; }
+span.textit { font-style: italic; }
+span.texttt { font-family: monospace; }
+span.tcode_in_codeblock { font-family: monospace; font-style: normal; }
+span.phantom { color: white; }
+
+span.math { font-style: normal; }
+span.mathblock {
+display: block;
+margin-left: auto;
+margin-right: auto;
+margin-top: 1.2em;
+margin-bottom: 1.2em;
+text-align: center;
+}
+span.mathalpha {
+font-style: italic;
+}
+span.synopsis {
+font-weight: bold;
+margin-top: 0.5em;
+display: block;
+}
+span.definition {
+font-weight: bold;
+display: block;
+}
+.codeblock {
+margin-left: 1.2em;
+line-height: 127%;
+}
+.outputblock {
+margin-left: 1.2em;
+line-height: 127%;
+}
+div.itemdecl {
+margin-top: 2ex;
+}
+code.itemdeclcode {
+white-space: pre;
+display: block;
+}
+span.textsuperscript {
+vertical-align: super;
+font-size: smaller;
+line-height: 0;
+}
+.footnotenum { vertical-align: super; font-size: smaller; line-height: 0; }
+.footnote {
+font-size: small;
+margin-left: 2em;
+margin-right: 2em;
+margin-top: 0.6em;
+margin-bottom: 0.6em;
+}
+div.minipage {
+display: inline-block;
+margin-right: 3em;
+}
+div.numberedTable {
+text-align: center;
+margin: 2em;
+}
+div.figure {
+text-align: center;
+margin: 2em;
+}
+table {
+border: 1px solid black;
+border-collapse: collapse;
+margin-left: auto;
+margin-right: auto;
+margin-top: 0.8em;
+text-align: left;
+hyphens: none; 
+}
+td, th {
+padding-left: 1em;
+padding-right: 1em;
+vertical-align: top;
+}
+td.empty {
+padding: 0px;
+padding-left: 1px;
+}
+td.left {
+text-align: left;
+}
+td.right {
+text-align: right;
+}
+td.center {
+text-align: center;
+}
+td.justify {
+text-align: justify;
+}
+td.border {
+border-left: 1px solid black;
+}
+tr.rowsep, td.cline {
+border-top: 1px solid black;
+}
+tr.even, tr.odd {
+border-bottom: 1px solid black;
+}
+tr.capsep {
+border-top: 3px solid black;
+border-top-style: double;
+}
+tr.header {
+border-bottom: 3px solid black;
+border-bottom-style: double;
+}
+th {
+border-bottom: 1px solid black;
+}
+span.centry {
+font-weight: bold;
+}
+div.table {
+display: block;
+margin-left: auto;
+margin-right: auto;
+text-align: center;
+width: 90%;
+}
+span.indented {
+display: block;
+margin-left: 2em;
+margin-bottom: 1em;
+margin-top: 1em;
+}
+ol.enumeratea { list-style-type: none; background: inherit; }
+ol.enumerate { list-style-type: none; background: inherit; }
+@media (prefers-color-scheme: dark) {
+body {
+background-color: #171717;
+color: #e0e0e0;
+}
+span.mjx-mstyle { color: #e0e0e0 !important }
+a:link { color: #74bdff; }
+a:visited { color: #c38aff; }
+a.hidden_link {
+text-decoration: none;
+color: inherit;
+}
+span.phantom { color: #171717; }
+a.index:before { color: #e0e0e0; background-color: #4b6353; }
+.comment { color: #40f040; }
+.footnote .comment { color: #60ff60; }
+.example .comment { color: #60ff60; }
+.note .comment { color: #60ff60; }
+span.keyword { color: #32eade; }
+span.parenthesis { color: #ff7070; }
+span.curlybracket { color: #ff7070; }
+span.squarebracket { color: #ff7070; }
+span.literal { color: #ffd867; }
+span.literalterminal { color: #ffd867; }
+span.operator { color: #dac6d9; }
+span.anglebracket { color: #dac6d9; }
+span.preprocessordirective { color: #c28c68; }
+table { border-color: #e0e0e0; }
+td.border { border-color: #e0e0e0; }
+td.border { border-left-color: #e0e0e0; }
+tr.rowsep, td.cline { border-top-color: #e0e0e0; }
+tr.capsep { border-top-color: #e0e0e0; }
+th { border-bottom-color: #e0e0e0; }
+.footnoteSeparator { background-color: #e0e0e0; }
+text { fill: #e0e0e0; }
+path { stroke: #e0e0e0; }
+polygon { stroke: #e0e0e0; fill: #e0e0e0; }
+ellipse { stroke: #e0e0e0; }
+:target { background-color: #4b6345; color: #ffffff; }
+:target .codeblock { background-color: #4b6345; }
+:target ul { background-color: #4b6345; }
+:target a:link { color: #9fcdff; }
+:target a:visited { color: #d39aff; }
+:target a.hidden_link { text-decoration: none; color: inherit; }
+:target span.keyword { color: #52faee; }
+:target span.parenthesis { color: #ff4060; font-weight: bold; }
+:target span.curlybracket { color: #ff4060; font-weight: bold; }
+:target span.squarebracket { color: #ff4060; font-weight: bold; }
+:target span.literal { color: #ffe070; }
+:target span.literalterminal { color: #ffe070; }
+:target span.operator { color: #ffffff; }
+:target span.anglebracket { color: #ffffff; }
+:target span.preprocessordirective { color: #e0968f; }
+:target .comment { color: #75ff20; }
+:target .footnote .comment { color: #75ff20; }
+:target .example .comment { color: #75ff20; }
+:target .note .comment { color: #75ff20; }
+}
+</style>
+  <style type="text/css">:root {
+--unchanged-color: #898887;
+--add-color: #006e28;
+--rm-color: #bf0303;
+--note-color: #0000ff;
+}
+table thead tr {
+border-bottom: 3px solid black;
+border-bottom-style: double;
+}
+table tbody tr {
+border-bottom: 1px solid black;
+}
+.cmptable {
+width: 100%;
+}
+
+#title-block-header > table {
+border: none;
+float: right;
+}
+#title-block-header > table tbody tr {
+border-bottom: none;
+}
+
+ins, del {
+text-decoration-thickness: 1px;
+}
+
+ins {
+text-underline-offset: 3.5px;
+}
+.add {
+color: var(--add-color);
+}
+.rm {
+color: var(--rm-color);
+}
+code.diff {
+color: var(--unchanged-color);
+}
+code.diff span.va {
+color: var(--add-color);
+}
+code.diff span.st {
+color: var(--rm-color);
+}
+.ednote,
+.draftnote {
+color: var(--note-color);
+}
+
+div.sourceCode {
+padding: 0.5em;
+}
+
+.view-controls {
+position: sticky;
+top: 0.75rem;
+z-index: 1000;
+display: flex;
+flex-direction: column;
+align-items: flex-start;
+gap: 0.35rem;
+width: fit-content;
+margin-left: auto;
+margin-bottom: 1rem;
+padding: 0.45rem 0.8rem;
+border: 1px solid #b7c0c8;
+border-radius: 999px;
+background: rgba(255, 255, 255, 0.96);
+color: #22303c;
+font: 600 0.9rem/1.1 sans-serif;
+box-shadow: 0 0.2rem 0.8rem rgba(34, 48, 60, 0.12);
+}
+.view-controls:hover {
+background: #f3f6f8;
+}
+.view-controls label {
+display: flex;
+align-items: center;
+gap: 0.45rem;
+}
+.view-controls input {
+margin: 0;
+}
+.view-controls span {
+white-space: nowrap;
+}
+body[data-syntax-highlighting="off"] code.sourceCode:not(.diff) span:not(.add, .rm, .co, .cv, .do, .in) {
+color: inherit !important;
+font-style: inherit !important;
+font-weight: inherit !important;
+text-decoration: inherit !important;
+}
+body[data-deleted-text="hide"] .rm del {
+display: none !important;
+}
+@media (prefers-color-scheme: dark) {
+:root {
+color-scheme: dark;
+--unchanged-color: #e0e0e0;
+--add-color: #d0fddd;
+--rm-color: #ff9b98;
+--note-color: #6699ff;
+}
+table thead tr {
+border-bottom-color: #e0e0e0;
+}
+table tbody tr {
+border-bottom-color: #e0e0e0;
+}
+div.sourceCode {
+background-color: rgba(255, 255, 255, 0.03);
+}
+.view-controls {
+border-color: #59636c;
+background: rgba(37, 37, 37, 0.96);
+color: #e0e0e0;
+box-shadow: 0 0.2rem 0.8rem rgba(0, 0, 0, 0.4);
+}
+.view-controls:hover {
+background: #303030;
+}
+mark {
+background-color: #665c00;
+color: #ffffff;
+}
+code span.al,
+code span.er {
+color: #ff7070;
+}
+code span.cf,
+code span.dt,
+code span.kw {
+color: #32eade;
+}
+code span.bn,
+code span.bu,
+code span.ch,
+code span.dv,
+code span.fl,
+code span.sc,
+code span.ss,
+code span.st,
+code span.vs {
+color: #ffd867;
+}
+code span.co,
+code span.cv,
+code span.do,
+code span.in,
+code span.wa {
+color: #60ff60;
+}
+code span.op {
+color: #dac6d9;
+}
+code span.pp {
+color: #c28c68;
+}
+:target .sourceCode,
+p:has(> span.marginalizedparent > a.marginalized:target),
+li:has(> span.marginalizedparent > a.marginalized:target) {
+background-color: #4b6345;
+}
+}
+</style>
+  <link href="data:image/vnd.microsoft.icon;base64,AAABAAIAEBAAAAEAIABoBAAAJgAAACAgAAABACAAqBAAAI4EAAAoAAAAEAAAACAAAAABACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA////AIJEAACCRAAAgkQAAIJEAACCRAAAgkQAVoJEAN6CRADegkQAWIJEAACCRAAAgkQAAIJEAACCRAAA////AP///wCCRAAAgkQAAIJEAACCRAAsgkQAvoJEAP+CRAD/gkQA/4JEAP+CRADAgkQALoJEAACCRAAAgkQAAP///wD///8AgkQAAIJEABSCRACSgkQA/IJEAP99PQD/dzMA/3czAP99PQD/gkQA/4JEAPyCRACUgkQAFIJEAAD///8A////AHw+AFiBQwDqgkQA/4BBAP9/PxP/uZd6/9rJtf/bybX/upd7/39AFP+AQQD/gkQA/4FDAOqAQgBc////AP///wDKklv4jlEa/3o7AP+PWC//8+3o///////////////////////z7un/kFox/35AAP+GRwD/mVYA+v///wD///8A0Zpk+NmibP+0d0T/8evj///////+/fv/1sKz/9bCs//9/fr//////+/m2/+NRwL/nloA/5xYAPj///8A////ANKaZPjRmGH/5cKh////////////k149/3UwAP91MQD/lmQ//86rhv+USg3/m1YA/5hSAP+bVgD4////AP///wDSmmT4zpJY/+/bx///////8+TV/8mLT/+TVx//gkIA/5lVAP+VTAD/x6B//7aEVv/JpH7/s39J+P///wD///8A0ppk+M6SWP/u2sf///////Pj1f/Nj1T/2KFs/8mOUv+eWhD/lEsA/8aee/+0glT/x6F7/7J8Rvj///8A////ANKaZPjRmGH/48Cf///////+/v7/2qt//82PVP/OkFX/37KJ/86siv+USg7/mVQA/5hRAP+bVgD4////AP///wDSmmT40ppk/9CVXP/69O////////7+/v/x4M//8d/P//7+/f//////9u7n/6tnJf+XUgD/nFgA+P///wD///8A0ppk+NKaZP/RmWL/1qNy//r07///////////////////////+vXw/9akdP/Wnmn/y5FY/6JfFvj///8A////ANKaZFTSmmTo0ppk/9GYYv/Ql1//5cWm//Hg0P/x4ND/5cWm/9GXYP/RmGH/0ppk/9KaZOjVnmpY////AP///wDSmmQA0ppkEtKaZI7SmmT60ppk/9CWX//OkVb/zpFW/9CWX//SmmT/0ppk/NKaZJDSmmQS0ppkAP///wD///8A0ppkANKaZADSmmQA0ppkKtKaZLrSmmT/0ppk/9KaZP/SmmT/0ppkvNKaZCrSmmQA0ppkANKaZAD///8A////ANKaZADSmmQA0ppkANKaZADSmmQA0ppkUtKaZNzSmmTc0ppkVNKaZADSmmQA0ppkANKaZADSmmQA////AP5/AAD4HwAA4AcAAMADAACAAQAAgAEAAIABAACAAQAAgAEAAIABAACAAQAAgAEAAMADAADgBwAA+B8AAP5/AAAoAAAAIAAAAEAAAAABACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA////AP///wCCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRAAAgkQAAIJEAAyCRACMgkQA6oJEAOqCRACQgkQAEIJEAACCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRAAA////AP///wD///8A////AIJEAACCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRABigkQA5oJEAP+CRAD/gkQA/4JEAP+CRADqgkQAZoJEAACCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRAAAgkQAAIJEAAD///8A////AP///wD///8AgkQAAIJEAACCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRAA4gkQAwoJEAP+CRAD/gkQA/4JEAP+CRAD/gkQA/4JEAP+CRAD/gkQAxIJEADyCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRAAAgkQAAP///wD///8A////AP///wCCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRAAWgkQAmIJEAP+CRAD/gkQA/4JEAP+CRAD/gkQA/4JEAP+CRAD/gkQA/4JEAP+CRAD/gkQA/4JEAJyCRAAYgkQAAIJEAACCRAAAgkQAAIJEAACCRAAA////AP///wD///8A////AIJEAACCRAAAgkQAAIJEAACCRAAAgkQAdIJEAPCCRAD/gkQA/4JEAP+CRAD/gkQA/4JEAP+CRAD/gkQA/4JEAP+CRAD/gkQA/4JEAP+CRAD/gkQA/4JEAPSCRAB4gkQAAIJEAACCRAAAgkQAAIJEAAD///8A////AP///wD///8AgkQAAIJEAACCRAAAgkQASoJEANKCRAD/gkQA/4JEAP+CRAD/g0YA/39AAP9zLgD/bSQA/2shAP9rIQD/bSQA/3MuAP9/PwD/g0YA/4JEAP+CRAD/gkQA/4JEAP+CRADUgkQAToJEAACCRAAAgkQAAP///wD///8A////AP///wB+PwAAgkUAIoJEAKiCRAD/gkQA/4JEAP+CRAD/hEcA/4BBAP9sIwD/dTAA/5RfKv+viF7/vp56/76ee/+wiF7/lWAr/3YxAP9sIwD/f0AA/4RHAP+CRAD/gkQA/4JEAP+CRAD/gkQArIJEACaBQwAA////AP///wD///8A////AIBCAEBzNAD6f0EA/4NFAP+CRAD/gkQA/4VIAP92MwD/bSUA/6N1Tv/ezsL/////////////////////////////////38/D/6V3Uv9uJgD/dTEA/4VJAP+CRAD/gkQA/4JEAP+BQwD/fUAA/4FDAEj///8A////AP///wD///8AzJRd5qBlKf91NgD/dDUA/4JEAP+FSQD/cy4A/3YyAP/PuKP//////////////////////////////////////////////////////9K7qP94NQD/ciwA/4VJAP+CRAD/fkEA/35BAP+LSwD/mlYA6v///wD///8A////AP///wDdpnL/4qx3/8KJUv+PUhf/cTMA/3AsAP90LgD/4dK+/////////////////////////////////////////////////////////////////+TYxf91MAD/dTIA/31CAP+GRwD/llQA/6FcAP+gWwD8////AP///wD///8A////ANGZY/LSm2X/4ap3/92mcP+wdT3/byQA/8mwj////////////////////////////////////////////////////////////////////////////+LYxv9zLgP/jUoA/59bAP+hXAD/nFgA/5xYAPL///8A////AP///wD///8A0ppk8tKaZP/RmWL/1p9q/9ubXv/XqXj////////////////////////////7+fD/vZyG/6BxS/+gcUr/vJuE//r37f//////////////////////3MOr/5dQBf+dVQD/nVkA/5xYAP+cWAD/nFgA8v///wD///8A////AP///wDSmmTy0ppk/9KaZP/SmWP/yohJ//jo2P//////////////////////4NTG/4JDFf9lGAD/bSQA/20kAP9kGAD/fz8S/+Xb0f//////5NG9/6txN/+LOgD/m1QA/51aAP+cWAD/m1cA/5xYAP+cWADy////AP///wD///8A////ANKaZPLSmmT/0ppk/8+TWf/Unmv//v37//////////////////////+TWRr/VwsA/35AAP+ERgD/g0UA/4JGAP9lHgD/kFga/8KXX/+TRwD/jT4A/49CAP+VTQD/n10A/5xYAP+OQQD/lk4A/55cAPL///8A////AP///wD///8A0ppk8tKaZP/SmmT/y4tO/92yiP//////////////////////8NnE/8eCQP+rcTT/ez0A/3IyAP98PgD/gEMA/5FSAP+USwD/jj8A/5lUAP+JNwD/yqV2/694Mf+HNQD/jkAA/82rf/+laBj/jT4A8v///wD///8A////AP///wDSmmTy0ppk/9KaZP/LiUr/4byY///////////////////////gupX/0I5P/+Wuev/Lklz/l1sj/308AP+QSwD/ol0A/59aAP+aVQD/k0oA/8yoh///////+fXv/6pwO//Lp3v///////Pr4f+oay7y////AP///wD///8A////ANKaZPLSmmT/0ppk/8uJSv/hvJj//////////////////////+G7l//Jhkb/0ppk/96nc//fqXX/x4xO/6dkFP+QSQD/llEA/5xXAP+USgD/yaOA///////38uv/qG05/8ijdv//////8efb/6ZpLPL///8A////AP///wD///8A0ppk8tKaZP/SmmT/zIxO/9yxh///////////////////////7dbA/8iEQf/Sm2X/0Zlj/9ScZv/eqHf/2KJv/7yAQf+XTgD/iToA/5lSAP+JNgD/yKFv/611LP+HNQD/jT8A/8qmeP+kZRT/jT4A8v///wD///8A////AP///wDSmmTy0ppk/9KaZP/Pk1n/1J5q//78+//////////////////+/fv/1aFv/8iEQv/Tm2b/0ppl/9GZY//Wn2z/1pZc/9eldf/Bl2b/kUcA/4w9AP+OQAD/lUwA/59eAP+cWQD/jT8A/5ZOAP+eXADy////AP///wD///8A////ANKaZPLSmmT/0ppk/9KZY//KiEn/8d/P///////////////////////47+f/05tm/8iCP//KiEj/yohJ/8eCP//RmGH//vfy///////n1sP/rXQ7/4k4AP+TTAD/nVoA/5xYAP+cVwD/nFgA/5xYAPL///8A////AP///wD///8A0ppk8tKaZP/SmmT/0ptl/8uLTf/aq37////////////////////////////+/fz/6c2y/961jv/etY7/6Myx//78+v//////////////////////3MWv/5xXD/+ORAD/mFQA/51ZAP+cWAD/nFgA8v///wD///8A////AP///wDSmmTy0ppk/9KaZP/SmmT/0ppk/8mFRP/s1b//////////////////////////////////////////////////////////////////////////////+PD/0JFU/7NzMv+WUQD/kUsA/5tXAP+dWQDy////AP///wD///8A////ANKaZP/SmmT/0ppk/9KaZP/Sm2X/z5NZ/8yMT//z5NX/////////////////////////////////////////////////////////////////9Ofa/8yNUP/UmGH/36p5/8yTWv+qaSD/kksA/5ROAPz///8A////AP///wD///8A0ppk5NKaZP/SmmT/0ppk/9KaZP/TnGf/zY9T/82OUv/t1sD//////////////////////////////////////////////////////+7Yw//OkFX/zI5R/9OcZ//SmmP/26V0/9ymdf/BhUf/ol8R6P///wD///8A////AP///wDSmmQ80ppk9tKaZP/SmmT/0ppk/9KaZP/TnGj/zpFW/8qJSv/dson/8uHS//////////////////////////////////Lj0//etIv/y4lL/86QVf/TnGj/0ppk/9KaZP/RmWP/05xn/9ymdfjUnWdC////AP///wD///8A////ANKaZADSmmQc0ppkotKaZP/SmmT/0ppk/9KaZP/Tm2b/0Zli/8qJSf/NjlH/16Z3/+G8mP/myKr/5siq/+G8mP/Xp3f/zY5S/8qISf/RmGH/05tm/9KaZP/SmmT/0ppk/9KaZP/SmmSm0pljINWdaQD///8A////AP///wD///8A0ppkANKaZADSmmQA0ppkQtKaZMrSmmT/0ppk/9KaZP/SmmT/0ptl/9GYYf/Nj1P/y4lL/8qISP/KiEj/y4lK/82PU//RmGH/0ptl/9KaZP/SmmT/0ppk/9KaZP/SmmTO0ppkRtKaZADSmmQA0ppkAP///wD///8A////AP///wDSmmQA0ppkANKaZADSmmQA0ppkANKaZGzSmmTu0ppk/9KaZP/SmmT/0ppk/9KaZP/SmmT/0ppk/9KaZP/SmmT/0ppk/9KaZP/SmmT/0ppk/9KaZP/SmmTw0ppkcNKaZADSmmQA0ppkANKaZADSmmQA////AP///wD///8A////ANKaZADSmmQA0ppkANKaZADSmmQA0ppkANKaZBLSmmSQ0ppk/9KaZP/SmmT/0ppk/9KaZP/SmmT/0ppk/9KaZP/SmmT/0ppk/9KaZP/SmmT/0ppklNKaZBTSmmQA0ppkANKaZADSmmQA0ppkANKaZAD///8A////AP///wD///8A0ppkANKaZADSmmQA0ppkANKaZADSmmQA0ppkANKaZADSmmQy0ppkutKaZP/SmmT/0ppk/9KaZP/SmmT/0ppk/9KaZP/SmmT/0ppkvtKaZDbSmmQA0ppkANKaZADSmmQA0ppkANKaZADSmmQA0ppkAP///wD///8A////AP///wDSmmQA0ppkANKaZADSmmQA0ppkANKaZADSmmQA0ppkANKaZADSmmQA0ppkXNKaZODSmmT/0ppk/9KaZP/SmmT/0ppk5NKaZGDSmmQA0ppkANKaZADSmmQA0ppkANKaZADSmmQA0ppkANKaZADSmmQA////AP///wD///8A////ANKaZADSmmQA0ppkANKaZADSmmQA0ppkANKaZADSmmQA0ppkANKaZADSmmQA0ppkBtKaZIbSmmTo0ppk6tKaZIrSmmQK0ppkANKaZADSmmQA0ppkANKaZADSmmQA0ppkANKaZADSmmQA0ppkANKaZAD///8A////AP/8P///+B///+AH//+AAf//AAD//AAAP/AAAA/gAAAHwAAAA8AAAAPAAAADwAAAA8AAAAPAAAADwAAAA8AAAAPAAAADwAAAA8AAAAPAAAADwAAAA8AAAAPAAAADwAAAA+AAAAfwAAAP/AAAP/8AAP//gAH//+AH///4H////D//" rel="icon" />
+  
+</head>
+<body data-syntax-highlighting="on" data-deleted-text="show">
+<form class="view-controls">
+<label for="no-syntax-highlighting-toggle">
+<input id="no-syntax-highlighting-toggle" type="checkbox"></input>
+<span>No syntax highlighting</span>
+</label>
+<label for="hide-deleted-text-toggle">
+<input id="hide-deleted-text-toggle" type="checkbox"></input>
+<span>Hide deleted text</span>
+</label>
+</form>
+<div class="wrapper">
+<header id="title-block-header">
+<h1 class="title" style="text-align:center">Pattern Matching Usage in
+Chromium</h1>
+<table>
+  <tr>
+    <td>Document #:</td>
+    <td>
+      D0000R0
+      [<a href="https://wg21.link/P0000">Latest</a>]
+      [<a href="https://wg21.link/P0000/status">Status</a>]
+    </td>
+  </tr>
+  <tr>
+    <td>Date:</td>
+    <td>2026-09-01</td>
+  </tr>
+  <tr>
+    <td style="vertical-align:top">Project:</td>
+    <td>Programming Language C++</td>
+  </tr>
+  <tr>
+    <td style="vertical-align:top">Audience:</td>
+    <td>
+      Evolution<br>
+    </td>
+  </tr>
+  <tr>
+    <td style="vertical-align:top">Reply-to:</td>
+    <td>
+      Michael Park<br>&lt;<a href="mailto:mcypark@gmail.com" class="email">mcypark@gmail.com</a>&gt;<br>
+    </td>
+  </tr>
+</table>
+</header>
+<div style="clear:both">
+<div id="TOC" role="doc-toc">
+<h1 id="toctitle">Contents</h1>
+<ul>
+<li><a href="#abstract" id="toc-abstract"><span class="toc-section-number">1</span> Abstract</a></li>
+<li><a href="#survey-methodology" id="toc-survey-methodology"><span class="toc-section-number">2</span> Survey methodology</a></li>
+<li><a href="#corpus-census" id="toc-corpus-census"><span class="toc-section-number">3</span> Corpus census</a></li>
+<li><a href="#design-priorities-from-the-corpus" id="toc-design-priorities-from-the-corpus"><span class="toc-section-number">4</span> Design priorities from the
+corpus</a></li>
+<li><a href="#closed-choices" id="toc-closed-choices"><span class="toc-section-number">5</span> Closed choices</a>
+<ul>
+<li><a href="#explicit-overload-sets" id="toc-explicit-overload-sets"><span class="toc-section-number">5.1</span> Explicit overload sets</a></li>
+<li><a href="#recovering-the-active-type-with-if-constexpr" id="toc-recovering-the-active-type-with-if-constexpr"><span class="toc-section-number">5.2</span> Recovering the active type with
+<code class="sourceCode cpp"><span class="cf">if</span> <span class="kw">constexpr</span></code></a></li>
+</ul></li>
+<li><a href="#enclosing-control-flow" id="toc-enclosing-control-flow"><span class="toc-section-number">6</span> Enclosing control flow</a></li>
+<li><a href="#results-and-composition" id="toc-results-and-composition"><span class="toc-section-number">7</span> Results and composition</a>
+<ul>
+<li><a href="#valueerror-handling-inside-a-loop" id="toc-valueerror-handling-inside-a-loop"><span class="toc-section-number">7.1</span> Value/error handling inside a
+loop</a></li>
+<li><a href="#result-variant-value-and-loop-control-together" id="toc-result-variant-value-and-loop-control-together"><span class="toc-section-number">7.2</span> Result, variant, value, and loop
+control together</a></li>
+</ul></li>
+<li><a href="#value-and-product-patterns" id="toc-value-and-product-patterns"><span class="toc-section-number">8</span> Value and product patterns</a>
+<ul>
+<li><a href="#or-patterns-replace-grouped-labels" id="toc-or-patterns-replace-grouped-labels"><span class="toc-section-number">8.1</span> Or-patterns replace grouped
+labels</a></li>
+<li><a href="#product-matching-combines-related-tests" id="toc-product-matching-combines-related-tests"><span class="toc-section-number">8.2</span> Product matching combines related
+tests</a></li>
+</ul></li>
+<li><a href="#open-runtime-type-refinement" id="toc-open-runtime-type-refinement"><span class="toc-section-number">9</span> Open runtime type
+refinement</a></li>
+<li><a href="#where-match-is-not-automatically-better" id="toc-where-match-is-not-automatically-better"><span class="toc-section-number">10</span> Where
+<code class="sourceCode cpp"><span class="kw">match</span></code> is not
+automatically better</a>
+<ul>
+<li><a href="#one-generic-operation" id="toc-one-generic-operation"><span class="toc-section-number">10.1</span> One generic operation</a></li>
+<li><a href="#correlated-multi-variant-dispatch" id="toc-correlated-multi-variant-dispatch"><span class="toc-section-number">10.2</span> Correlated multi-variant
+dispatch</a></li>
+<li><a href="#simple-nullable-tests" id="toc-simple-nullable-tests"><span class="toc-section-number">10.3</span> Simple nullable tests</a></li>
+</ul></li>
+<li><a href="#conclusions" id="toc-conclusions"><span class="toc-section-number">11</span> Conclusions</a></li>
+</ul>
+</div>
+<h1 data-number="1" id="abstract"><span class="header-section-number">1</span> Abstract<a href="#abstract" class="self-link"></a></h1>
+<p>This is a supporting empirical report for P2688R6, <em>Pattern
+Matching:
+<code class="sourceCode cpp"><span class="kw">match</span></code>
+Expression</em>.</p>
+<p>This report tests the proposed design against a large public C++
+codebase by surveying <a href="https://github.com/chromium/chromium/tree/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5">Chromium
+revision 45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5</a>. All source links
+are pinned to that revision.</p>
+<p>The main findings are:</p>
+<ul>
+<li>nullable and result-like types are much more common than
+<code class="sourceCode cpp">std<span class="op">::</span>variant</code>;</li>
+<li>explicit overload-set visitors are common and translate directly to
+match arms;</li>
+<li>manual <code class="sourceCode cpp">get_if</code> dispatch matters
+most when it is mixed with enclosing
+<code class="sourceCode cpp"><span class="cf">break</span></code>,
+<code class="sourceCode cpp"><span class="cf">continue</span></code>,
+and <code class="sourceCode cpp"><span class="cf">return</span></code>
+control flow;</li>
+<li>grouped
+<code class="sourceCode cpp"><span class="cf">switch</span></code>
+labels provide strong evidence for or-patterns;</li>
+<li>Blink’s custom <code class="sourceCode cpp">DynamicTo</code>
+protocol is far more prevalent than C++ RTTI, motivating an open cast
+customization rather than special treatment only for
+<code class="sourceCode cpp"><span class="kw">dynamic_cast</span></code>;
+and</li>
+<li>generic one-operation visitors and correlated multi-variant visitors
+expose places where
+<code class="sourceCode cpp"><span class="kw">match</span></code> is not
+automatically clearer.</li>
+</ul>
+<h1 data-number="2" id="survey-methodology"><span class="header-section-number">2</span> Survey methodology<a href="#survey-methodology" class="self-link"></a></h1>
+<p>The survey used a shallow, partial Chromium checkout at the revision
+above. The corpus contains non-test
+<code class="sourceCode cpp"><span class="op">.</span>h</code>,
+<code class="sourceCode cpp"><span class="op">.</span>hh</code>,
+<code class="sourceCode cpp"><span class="op">.</span>hpp</code>,
+<code class="sourceCode cpp"><span class="op">.</span>cc</code>,
+<code class="sourceCode cpp"><span class="op">.</span>cpp</code>,
+<code class="sourceCode cpp"><span class="op">.</span>cxx</code>, and
+<code class="sourceCode cpp"><span class="op">.</span>mm</code> files
+under:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>base, cc, chrome, components, content, device, gpu, media, net,</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>services, third_party/blink, ui</span></code></pre></div>
+<p>Directories named <code class="sourceCode cpp">test</code>,
+<code class="sourceCode cpp">tests</code>,
+<code class="sourceCode cpp">testing</code>,
+<code class="sourceCode cpp">unittests</code>,
+<code class="sourceCode cpp">examples</code>,
+<code class="sourceCode cpp">test_support</code>, and
+<code class="sourceCode cpp">test_utils</code> were excluded. Files
+whose stems end in <code class="sourceCode cpp">_test</code>,
+<code class="sourceCode cpp">_unittest</code>,
+<code class="sourceCode cpp">_browsertest</code>,
+<code class="sourceCode cpp">_perftest</code>,
+<code class="sourceCode cpp">_fuzzer</code>,
+<code class="sourceCode cpp">_test_util</code>,
+<code class="sourceCode cpp">_test_utils</code>, or
+<code class="sourceCode cpp">_test_base</code> were also excluded.</p>
+<p>The resulting corpus has 72,503 files and approximately 13.29 million
+lines. A lexical scanner masked comments and string and character
+literals before counting syntax and library names.</p>
+<p>The tables distinguish three kinds of evidence:</p>
+<ul>
+<li><strong>Lexical counts</strong> count occurrences after masking
+comments and literals.</li>
+<li><strong>Reviewed sites</strong> start from a lexical heuristic and
+were then inspected manually.</li>
+<li><strong>Candidate clusters</strong> are conservative lower bounds
+over recognizable source shapes. They are not claims that every site
+should be rewritten.</li>
+</ul>
+<p>Aliases, wrappers, macros, and project-specific types make these
+counts underestimates of semantic usage. Conversely, a template-id may
+occur in a declaration or implementation utility that would not benefit
+from matching. The proposed rewrites are illustrative and have not been
+submitted to Chromium.</p>
+<h1 data-number="3" id="corpus-census"><span class="header-section-number">3</span> Corpus census<a href="#corpus-census" class="self-link"></a></h1>
+<table>
+<colgroup>
+<col style="width: 30%" />
+<col style="width: 40%" />
+<col style="width: 30%" />
+</colgroup>
+<thead>
+<tr>
+<th><div style="text-align:center">
+<strong>Signal</strong>
+</div></th>
+<th style="text-align: right;"><div style="text-align:center">
+<strong>Count</strong>
+</div></th>
+<th><div style="text-align:center">
+<strong>Interpretation</strong>
+</div></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code class="sourceCode cpp">std<span class="op">::</span>variant<span class="op">&lt;...&gt;</span></code></td>
+<td style="text-align: right;">773 mentions in 569 files</td>
+<td>Closed choices are established but not dominant</td>
+</tr>
+<tr>
+<td><code class="sourceCode cpp">std<span class="op">::</span>visit<span class="op">(...)</span></code></td>
+<td style="text-align: right;">422 calls</td>
+<td>Direct visitor-replacement candidates</td>
+</tr>
+<tr>
+<td>Explicit
+<code class="sourceCode cpp">absl<span class="op">::</span>Overload</code>-style
+visitors</td>
+<td style="text-align: right;">284 calls</td>
+<td>Strong candidates for declaration arms</td>
+</tr>
+<tr>
+<td>Simple generic visitors</td>
+<td style="text-align: right;">99 calls</td>
+<td>Usually modest syntactic benefit</td>
+</tr>
+<tr>
+<td><code class="sourceCode cpp">std<span class="op">::</span>get_if<span class="op">&lt;...&gt;</span></code></td>
+<td style="text-align: right;">404 occurrences</td>
+<td>Manual alternative tests and bindings</td>
+</tr>
+<tr>
+<td><code class="sourceCode cpp">std<span class="op">::</span>holds_alternative<span class="op">&lt;...&gt;</span></code></td>
+<td style="text-align: right;">962 occurrences</td>
+<td>Type predicates and grouped alternatives</td>
+</tr>
+<tr>
+<td><code class="sourceCode cpp">std<span class="op">::</span>optional<span class="op">&lt;...&gt;</span></code>
+/
+<code class="sourceCode cpp">std<span class="op">::</span>nullopt</code></td>
+<td style="text-align: right;">60,798 / 19,107 occurrences</td>
+<td>Nullable projection is pervasive</td>
+</tr>
+<tr>
+<td><code class="sourceCode cpp">base<span class="op">::</span>expected<span class="op">&lt;...&gt;</span></code></td>
+<td style="text-align: right;">3,474 occurrences</td>
+<td>Value/error projection is a first-class use case</td>
+</tr>
+<tr>
+<td><code class="sourceCode cpp">std<span class="op">::</span>any</code></td>
+<td style="text-align: right;">0 occurrences</td>
+<td>Standard open type erasure is not motivated by this corpus</td>
+</tr>
+<tr>
+<td>Blink
+<code class="sourceCode cpp">DynamicTo<span class="op">&lt;...&gt;</span></code>
+/
+<code class="sourceCode cpp">IsA<span class="op">&lt;...&gt;</span></code></td>
+<td style="text-align: right;">4,313 / 1,493 occurrences</td>
+<td>Project-specific open type refinement is heavily used</td>
+</tr>
+<tr>
+<td>C++
+<code class="sourceCode cpp"><span class="kw">dynamic_cast</span></code></td>
+<td style="text-align: right;">0 executable occurrences</td>
+<td>Built-in RTTI alone would reach little Chromium code</td>
+</tr>
+<tr>
+<td>Structured bindings</td>
+<td style="text-align: right;">1,340 declarations</td>
+<td>Structural decomposition is familiar vocabulary</td>
+</tr>
+<tr>
+<td><code class="sourceCode cpp">std<span class="op">::</span>pair<span class="op">&lt;...&gt;</span></code>
+/
+<code class="sourceCode cpp">std<span class="op">::</span>tuple<span class="op">&lt;...&gt;</span></code>
+/
+<code class="sourceCode cpp">std<span class="op">::</span>tie<span class="op">(...)</span></code></td>
+<td style="text-align: right;">4,050 / 591 / 752 occurrences</td>
+<td>Product values are common, but not every use is a match</td>
+</tr>
+<tr>
+<td><code class="sourceCode cpp"><span class="cf">switch</span></code></td>
+<td style="text-align: right;">19,888 occurrences</td>
+<td>Integral and enum dispatch remains important</td>
+</tr>
+<tr>
+<td>Consecutive grouped
+<code class="sourceCode cpp"><span class="cf">case</span></code>
+runs</td>
+<td style="text-align: right;">10,016 runs containing 47,270 labels</td>
+<td>Strong lower bound for useful or-patterns</td>
+</tr>
+<tr>
+<td><code class="sourceCode cpp">holds_alternative</code>
+disjunctions</td>
+<td style="text-align: right;">6 reviewed lexical candidates</td>
+<td>Type or-patterns occur, but are not dominant</td>
+</tr>
+<tr>
+<td>Multi-variant
+<code class="sourceCode cpp">std<span class="op">::</span>visit</code></td>
+<td style="text-align: right;">2 calls</td>
+<td>Correlated product dispatch is rare in this corpus</td>
+</tr>
+</tbody>
+</table>
+<p>The visitor categories are syntactic. A call classified as an
+explicit overload set contains an
+<code class="sourceCode cpp">Overload</code>/<code class="sourceCode cpp">Overloaded</code>
+helper at the call site. A simple generic visitor contains a generic
+lambda, no overload helper, and no
+<code class="sourceCode cpp"><span class="cf">if</span> <span class="kw">constexpr</span></code>.
+The remaining calls include named visitors and generic visitors with
+type-dependent control flow.</p>
+<h1 data-number="4" id="design-priorities-from-the-corpus"><span class="header-section-number">4</span> Design priorities from the
+corpus<a href="#design-priorities-from-the-corpus" class="self-link"></a></h1>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th><div style="text-align:center">
+<strong>Priority</strong>
+</div></th>
+<th><div style="text-align:center">
+<strong>Evidence</strong>
+</div></th>
+<th><div style="text-align:center">
+<strong>Consequence for the design</strong>
+</div></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Closed alternative dispatch</td>
+<td>284 explicit overload-set visitors, 404
+<code class="sourceCode cpp">get_if</code> uses</td>
+<td><code class="sourceCode cpp"><span class="op">{</span> declaration <span class="op">}</span></code>
+arms should be direct and exhaustive</td>
+</tr>
+<tr>
+<td>Nullable and result projection</td>
+<td>60,798 <code class="sourceCode cpp">optional</code> and 3,474
+<code class="sourceCode cpp">base<span class="op">::</span>expected</code>
+mentions</td>
+<td><code class="sourceCode cpp">alternative_traits</code> cannot be
+designed only around <code class="sourceCode cpp">variant</code></td>
+</tr>
+<tr>
+<td>Enclosing control flow</td>
+<td>Reviewed <code class="sourceCode cpp">get_if</code> and
+<code class="sourceCode cpp">expected</code> loops use
+<code class="sourceCode cpp"><span class="cf">continue</span></code>,
+<code class="sourceCode cpp"><span class="cf">break</span></code>, and
+<code class="sourceCode cpp"><span class="cf">return</span></code></td>
+<td>Handlers must not be trapped inside visitor lambdas</td>
+</tr>
+<tr>
+<td>Or-patterns</td>
+<td>10,016 grouped
+<code class="sourceCode cpp"><span class="cf">case</span></code>
+runs</td>
+<td>Shared-handler alternatives deserve first-class syntax</td>
+</tr>
+<tr>
+<td>Custom open refinement</td>
+<td>4,313 Blink <code class="sourceCode cpp">DynamicTo</code> uses</td>
+<td>A cast protocol is needed in addition to C++ RTTI</td>
+</tr>
+<tr>
+<td>Pattern composition</td>
+<td>HLS parsing combines result, variant, optional, enum, and
+guards</td>
+<td>Nested patterns are more important than isolated shorthand</td>
+</tr>
+<tr>
+<td>Preserve concise generic operations</td>
+<td>99 simple generic visitors</td>
+<td><code class="sourceCode cpp"><span class="kw">match</span></code>
+need not replace every visitor</td>
+</tr>
+</tbody>
+</table>
+<h1 data-number="5" id="closed-choices"><span class="header-section-number">5</span> Closed choices<a href="#closed-choices" class="self-link"></a></h1>
+<h2 data-number="5.1" id="explicit-overload-sets"><span class="header-section-number">5.1</span> Explicit overload sets<a href="#explicit-overload-sets" class="self-link"></a></h2>
+<p>Chromium commonly uses
+<code class="sourceCode cpp">absl<span class="op">::</span>Overload</code>
+to construct a visitor with one lambda per alternative. A compact
+example is
+<code class="sourceCode cpp">EnterpriseCompanionStatus<span class="op">::</span>code<span class="op">()</span></code>
+(<a href="https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/chrome/enterprise_companion/enterprise_companion_status.h#L80-L85">source</a>):</p>
+<table class="cmptable">
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th><div style="text-align:center">
+<strong>Before: compact overload set</strong>
+</div></th>
+<th><div style="text-align:center">
+<strong>After: direct alternatives</strong>
+</div></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><div class="sourceCode" id="cb2"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="cf">return</span> std<span class="op">::</span>visit<span class="op">(</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    absl<span class="op">::</span>Overload<span class="op">{[](</span>std<span class="op">::</span>monostate<span class="op">)</span> <span class="op">{</span> <span class="cf">return</span> <span class="dv">0</span><span class="op">;</span> <span class="op">},</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>                   <span class="op">[](</span><span class="kw">const</span> PersistedError<span class="op">&amp;</span> error<span class="op">)</span> <span class="op">{</span> <span class="cf">return</span> error<span class="op">.</span>code<span class="op">;</span> <span class="op">},</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>                   <span class="op">[](</span><span class="kw">auto</span><span class="op">&amp;&amp;</span> x<span class="op">)</span> <span class="op">{</span> <span class="cf">return</span> <span class="kw">static_cast</span><span class="op">&lt;</span><span class="dt">int</span><span class="op">&gt;(</span>x<span class="op">);</span> <span class="op">}},</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    status_variant_<span class="op">);</span></span></code></pre></div></td>
+<td><div class="sourceCode" id="cb3"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="cf">return</span> status_variant_ <span class="kw">match</span> <span class="op">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">case</span> <span class="op">{</span> std<span class="op">::</span>monostate <span class="op">}</span> <span class="op">=&gt;</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  <span class="cf">case</span> <span class="op">{</span> <span class="kw">const</span> PersistedError<span class="op">&amp;</span> error <span class="op">}</span> <span class="op">=&gt;</span> error<span class="op">.</span>code<span class="op">;</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>  <span class="cf">case</span> <span class="op">{</span> <span class="kw">auto</span><span class="op">&amp;&amp;</span> value <span class="op">}</span> <span class="op">=&gt;</span> <span class="kw">static_cast</span><span class="op">&lt;</span><span class="dt">int</span><span class="op">&gt;(</span>value<span class="op">);</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="op">};</span></span></code></pre></div></td>
+</tr>
+</tbody>
+</table>
+<p>The result is only modestly shorter, but the alternative selection
+and bindings are visible without constructing an overload object. A
+larger WebNN model-editor example has six such arms (<a href="https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/services/webnn/ort/model_editor.cc#L223-L270">source</a>):</p>
+<table class="cmptable">
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th><div style="text-align:center">
+<strong>Before: overload-set visitor</strong>
+</div></th>
+<th><div style="text-align:center">
+<strong>After: declaration arms</strong>
+</div></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><div class="sourceCode" id="cb4"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>std<span class="op">::</span>visit<span class="op">(</span>absl<span class="op">::</span>Overload<span class="op">{</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="op">[&amp;](</span><span class="dt">int64_t</span> value<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    CHECK_STATUS<span class="op">(</span>ort_api<span class="op">-&gt;</span>CreateOpAttr<span class="op">(</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>        name<span class="op">.</span>c_str<span class="op">(),</span> <span class="op">&amp;</span>value<span class="op">,</span> <span class="dv">1</span><span class="op">,</span> ORT_OP_ATTR_INT<span class="op">,</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>        ScopedOrtOpAttr<span class="op">::</span>Receiver<span class="op">(</span>attribute<span class="op">).</span>get<span class="op">()));</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>  <span class="op">},</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>  <span class="op">[&amp;](</span><span class="dt">float</span> value<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    CHECK_STATUS<span class="op">(</span>ort_api<span class="op">-&gt;</span>CreateOpAttr<span class="op">(</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>        name<span class="op">.</span>c_str<span class="op">(),</span> <span class="op">&amp;</span>value<span class="op">,</span> <span class="dv">1</span><span class="op">,</span> ORT_OP_ATTR_FLOAT<span class="op">,</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>        ScopedOrtOpAttr<span class="op">::</span>Receiver<span class="op">(</span>attribute<span class="op">).</span>get<span class="op">()));</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>  <span class="op">},</span></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>  <span class="op">[&amp;](</span>base<span class="op">::</span>cstring_view value<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>    CHECK_STATUS<span class="op">(</span>ort_api<span class="op">-&gt;</span>CreateOpAttr<span class="op">(</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>        name<span class="op">.</span>c_str<span class="op">(),</span> value<span class="op">.</span>data<span class="op">(),</span> value<span class="op">.</span>size<span class="op">(),</span> ORT_OP_ATTR_STRING<span class="op">,</span></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>        ScopedOrtOpAttr<span class="op">::</span>Receiver<span class="op">(</span>attribute<span class="op">).</span>get<span class="op">()));</span></span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>  <span class="op">},</span></span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>  <span class="op">[&amp;](</span>base<span class="op">::</span>span<span class="op">&lt;</span><span class="kw">const</span> <span class="dt">int64_t</span><span class="op">&gt;</span> value<span class="op">)</span> <span class="op">{</span> <span class="co">/* ... */</span> <span class="op">},</span></span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>  <span class="op">[&amp;](</span>base<span class="op">::</span>span<span class="op">&lt;</span><span class="kw">const</span> <span class="dt">float</span><span class="op">&gt;</span> value<span class="op">)</span> <span class="op">{</span> <span class="co">/* ... */</span> <span class="op">},</span></span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>  <span class="op">[&amp;](</span>base<span class="op">::</span>span<span class="op">&lt;</span><span class="kw">const</span> <span class="dt">char</span><span class="op">*&gt;</span> value<span class="op">)</span> <span class="op">{</span> <span class="co">/* ... */</span> <span class="op">},</span></span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a><span class="op">},</span> data<span class="op">);</span></span></code></pre></div></td>
+<td><div class="sourceCode" id="cb5"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>data <span class="kw">match</span> <span class="op">{</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">case</span> <span class="op">{</span> <span class="dt">int64_t</span> value <span class="op">}</span> <span class="op">=&gt;</span> <span class="cf">do</span> <span class="op">{</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    CHECK_STATUS<span class="op">(</span>ort_api<span class="op">-&gt;</span>CreateOpAttr<span class="op">(</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>        name<span class="op">.</span>c_str<span class="op">(),</span> <span class="op">&amp;</span>value<span class="op">,</span> <span class="dv">1</span><span class="op">,</span> ORT_OP_ATTR_INT<span class="op">,</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>        ScopedOrtOpAttr<span class="op">::</span>Receiver<span class="op">(</span>attribute<span class="op">).</span>get<span class="op">()));</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>  <span class="op">};</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>  <span class="cf">case</span> <span class="op">{</span> <span class="dt">float</span> value <span class="op">}</span> <span class="op">=&gt;</span> <span class="cf">do</span> <span class="op">{</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>    CHECK_STATUS<span class="op">(</span>ort_api<span class="op">-&gt;</span>CreateOpAttr<span class="op">(</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>        name<span class="op">.</span>c_str<span class="op">(),</span> <span class="op">&amp;</span>value<span class="op">,</span> <span class="dv">1</span><span class="op">,</span> ORT_OP_ATTR_FLOAT<span class="op">,</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>        ScopedOrtOpAttr<span class="op">::</span>Receiver<span class="op">(</span>attribute<span class="op">).</span>get<span class="op">()));</span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>  <span class="op">};</span></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>  <span class="cf">case</span> <span class="op">{</span> base<span class="op">::</span>cstring_view value <span class="op">}</span> <span class="op">=&gt;</span> <span class="cf">do</span> <span class="op">{</span></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>    CHECK_STATUS<span class="op">(</span>ort_api<span class="op">-&gt;</span>CreateOpAttr<span class="op">(</span></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>        name<span class="op">.</span>c_str<span class="op">(),</span> value<span class="op">.</span>data<span class="op">(),</span> value<span class="op">.</span>size<span class="op">(),</span> ORT_OP_ATTR_STRING<span class="op">,</span></span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>        ScopedOrtOpAttr<span class="op">::</span>Receiver<span class="op">(</span>attribute<span class="op">).</span>get<span class="op">()));</span></span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>  <span class="op">};</span></span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a>  <span class="cf">case</span> <span class="op">{</span> base<span class="op">::</span>span<span class="op">&lt;</span><span class="kw">const</span> <span class="dt">int64_t</span><span class="op">&gt;</span> value <span class="op">}</span> <span class="op">=&gt;</span> <span class="co">/* ... */</span><span class="op">;</span></span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a>  <span class="cf">case</span> <span class="op">{</span> base<span class="op">::</span>span<span class="op">&lt;</span><span class="kw">const</span> <span class="dt">float</span><span class="op">&gt;</span> value <span class="op">}</span> <span class="op">=&gt;</span> <span class="co">/* ... */</span><span class="op">;</span></span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a>  <span class="cf">case</span> <span class="op">{</span> base<span class="op">::</span>span<span class="op">&lt;</span><span class="kw">const</span> <span class="dt">char</span><span class="op">*&gt;</span> value <span class="op">}</span> <span class="op">=&gt;</span> <span class="co">/* ... */</span><span class="op">;</span></span>
+<span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a><span class="op">};</span></span></code></pre></div></td>
+</tr>
+</tbody>
+</table>
+<p>The handler bodies do not become shorter. The gain is structural: the
+subject, selection, binding, source order, and exhaustiveness are all
+represented by the language rather than by a constructed overload
+set.</p>
+<h2 data-number="5.2" id="recovering-the-active-type-with-if-constexpr"><span class="header-section-number">5.2</span> Recovering the active type with
+<code class="sourceCode cpp"><span class="cf">if</span> <span class="kw">constexpr</span></code><a href="#recovering-the-active-type-with-if-constexpr" class="self-link"></a></h2>
+<p>Some generic visitors recover the active type and rebuild a dispatch
+chain.
+<code class="sourceCode cpp">OverlayLayerId<span class="op">::</span>ToString</code>
+does this before applying a nested value switch (<a href="https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/ui/gfx/overlay_layer_id.cc#L71-L103">source</a>):</p>
+<table class="cmptable">
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th><div style="text-align:center">
+<strong>Before: generic visitor plus type recovery</strong>
+</div></th>
+<th><div style="text-align:center">
+<strong>After: type and value patterns compose</strong>
+</div></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><div class="sourceCode" id="cb6"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>std<span class="op">::</span>visit<span class="op">(</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    <span class="op">[&amp;](</span><span class="kw">auto</span><span class="op">&amp;&amp;</span> arg<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>      <span class="kw">using</span> T <span class="op">=</span> std<span class="op">::</span>decay_t<span class="op">&lt;</span><span class="kw">decltype</span><span class="op">(</span>arg<span class="op">)&gt;;</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>      <span class="cf">if</span> <span class="kw">constexpr</span> <span class="op">(</span>std<span class="op">::</span>is_same_v<span class="op">&lt;</span>T<span class="op">,</span> VizInternalId<span class="op">&gt;)</span> <span class="op">{</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>        <span class="cf">switch</span> <span class="op">(</span>arg<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>          <span class="cf">case</span> VizInternalId<span class="op">::</span>kOsCompositorRoot<span class="op">:</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>            out <span class="op">&lt;&lt;</span> <span class="st">&quot;OsCompositorRoot&quot;</span><span class="op">;</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>            <span class="cf">break</span><span class="op">;</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>          <span class="co">// ...</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>      <span class="op">}</span></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>      <span class="cf">if</span> <span class="kw">constexpr</span> <span class="op">(</span>std<span class="op">::</span>is_same_v<span class="op">&lt;</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>                        T<span class="op">,</span> std<span class="op">::</span>array<span class="op">&lt;</span><span class="dt">uint8_t</span><span class="op">,</span> <span class="kw">sizeof</span><span class="op">(</span>RenderPassId<span class="op">)&gt;&gt;)</span> <span class="op">{</span></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>        out <span class="op">&lt;&lt;</span> <span class="st">&quot;RenderPass(&quot;</span> <span class="op">&lt;&lt;</span> base<span class="op">::</span>U64FromNativeEndian<span class="op">(</span>arg<span class="op">)</span> <span class="op">&lt;&lt;</span> <span class="st">&quot;)&quot;</span><span class="op">;</span></span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>      <span class="op">}</span></span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>      <span class="cf">if</span> <span class="kw">constexpr</span> <span class="op">(</span>std<span class="op">::</span>is_same_v<span class="op">&lt;</span>T<span class="op">,</span> RendererLayer<span class="op">&gt;)</span> <span class="op">{</span></span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>        out <span class="op">&lt;&lt;</span> arg<span class="op">.</span>layer_namespace_id<span class="op">.</span>first <span class="op">&lt;&lt;</span> <span class="st">&quot;:&quot;</span></span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a>            <span class="op">&lt;&lt;</span> arg<span class="op">.</span>layer_namespace_id<span class="op">.</span>second <span class="op">&lt;&lt;</span> <span class="st">&quot;:&quot;</span> <span class="op">&lt;&lt;</span> arg<span class="op">.</span>layer_id <span class="op">&lt;&lt;</span> <span class="st">&quot;.&quot;</span></span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a>            <span class="op">&lt;&lt;</span> arg<span class="op">.</span>sqs_z_order<span class="op">;</span></span>
+<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a>      <span class="op">}</span></span>
+<span id="cb6-21"><a href="#cb6-21" aria-hidden="true" tabindex="-1"></a>    <span class="op">},</span></span>
+<span id="cb6-22"><a href="#cb6-22" aria-hidden="true" tabindex="-1"></a>    impl_<span class="op">);</span></span></code></pre></div></td>
+<td><div class="sourceCode" id="cb7"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>impl_ <span class="kw">match</span> <span class="op">{</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">case</span> <span class="op">{</span> VizInternalId<span class="op">::</span>kOsCompositorRoot <span class="op">}</span> <span class="op">=&gt;</span> out <span class="op">&lt;&lt;</span> <span class="st">&quot;OsCompositorRoot&quot;</span><span class="op">;</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>  <span class="cf">case</span> <span class="op">{</span> VizInternalId<span class="op">::</span>kDelegatedInkTrail <span class="op">}</span> <span class="op">=&gt;</span> out <span class="op">&lt;&lt;</span> <span class="st">&quot;DelegatedInkTrail&quot;</span><span class="op">;</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>  <span class="cf">case</span> <span class="op">{</span> VizInternalId<span class="op">::</span>kBackgroundColorLayer <span class="op">}</span> <span class="op">=&gt;</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>      out <span class="op">&lt;&lt;</span> <span class="st">&quot;kBackgroundColorLayer&quot;</span><span class="op">;</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>  <span class="cf">case</span> <span class="op">{</span> <span class="kw">const</span> std<span class="op">::</span>array<span class="op">&lt;</span><span class="dt">uint8_t</span><span class="op">,</span> <span class="kw">sizeof</span><span class="op">(</span>RenderPassId<span class="op">)&gt;&amp;</span> bytes <span class="op">}</span> <span class="op">=&gt;</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>      out <span class="op">&lt;&lt;</span> <span class="st">&quot;RenderPass(&quot;</span> <span class="op">&lt;&lt;</span> base<span class="op">::</span>U64FromNativeEndian<span class="op">(</span>bytes<span class="op">)</span> <span class="op">&lt;&lt;</span> <span class="st">&quot;)&quot;</span><span class="op">;</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>  <span class="cf">case</span> <span class="op">{</span> <span class="kw">const</span> RendererLayer<span class="op">&amp;</span> layer <span class="op">}</span> <span class="op">=&gt;</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>      out <span class="op">&lt;&lt;</span> layer<span class="op">.</span>layer_namespace_id<span class="op">.</span>first <span class="op">&lt;&lt;</span> <span class="st">&quot;:&quot;</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>          <span class="op">&lt;&lt;</span> layer<span class="op">.</span>layer_namespace_id<span class="op">.</span>second <span class="op">&lt;&lt;</span> <span class="st">&quot;:&quot;</span> <span class="op">&lt;&lt;</span> layer<span class="op">.</span>layer_id <span class="op">&lt;&lt;</span> <span class="st">&quot;.&quot;</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>          <span class="op">&lt;&lt;</span> layer<span class="op">.</span>sqs_z_order<span class="op">;</span></span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a><span class="op">};</span></span></code></pre></div></td>
+</tr>
+</tbody>
+</table>
+<p>The important feature is not merely declaration syntax. A value
+pattern can be nested under alternative projection, avoiding a visitor
+arm whose first operation is another dispatch.</p>
+<p>This match is exhaustive under the proposal’s required-domain rule.
+The three value arms cover every declared
+<code class="sourceCode cpp">VizInternalId</code> enumerator, and the
+remaining two arms cover the other
+<code class="sourceCode cpp">variant</code> alternatives. It is not
+total over residual runtime states: because
+<code class="sourceCode cpp">VizInternalId</code> has a fixed
+<code class="sourceCode cpp"><span class="dt">uint32_t</span></code>
+underlying type, unnamed enum values remain possible, and
+<code class="sourceCode cpp">variant</code> can be valueless by
+exception. A trailing
+<code class="sourceCode cpp"><span class="cf">default</span></code>
+would therefore still be useful, but neither residual state is required
+for exhaustiveness. In this void match, an unmatched residual state
+performs no handler.</p>
+<h1 data-number="6" id="enclosing-control-flow"><span class="header-section-number">6</span> Enclosing control flow<a href="#enclosing-control-flow" class="self-link"></a></h1>
+<p>Visitor lambdas make control flow target the lambda. Chromium
+therefore often uses <code class="sourceCode cpp">get_if</code> when
+dispatch is embedded in a loop. The tab-strip bridge probes two
+alternatives, validates the projected handle, and may continue the
+enclosing loop (<a href="https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/chrome/browser/ui/tabs/tab_strip_api/tab_strip_model_impl/tab_strip_model_event_bridge.cc#L46-L65">source</a>):</p>
+<table class="cmptable">
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th><div style="text-align:center">
+<strong>Before: <code class="sourceCode cpp">get_if</code> chain in a
+loop</strong>
+</div></th>
+<th><div style="text-align:center">
+<strong>After: match arms retain loop control</strong>
+</div></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><div class="sourceCode" id="cb8"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> <span class="op">(</span><span class="kw">const</span> <span class="kw">auto</span><span class="op">&amp;</span> handle <span class="op">:</span> handles<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> <span class="op">(</span><span class="kw">const</span> <span class="kw">auto</span><span class="op">*</span> tab <span class="op">=</span> std<span class="op">::</span>get_if<span class="op">&lt;</span>tabs<span class="op">::</span>TabHandle<span class="op">&gt;(&amp;</span>handle<span class="op">))</span> <span class="op">{</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="op">(!</span>tab<span class="op">-&gt;</span>Get<span class="op">())</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>      <span class="cf">continue</span><span class="op">;</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    Notify<span class="op">(</span>events<span class="op">::</span>ToEvent<span class="op">(*</span>tab<span class="op">,</span> position<span class="op">,</span> <span class="op">*</span>tab_strip_model_adapter_<span class="op">));</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>  <span class="op">}</span> <span class="cf">else</span> <span class="cf">if</span> <span class="op">(</span><span class="kw">const</span> <span class="kw">auto</span><span class="op">*</span> collection <span class="op">=</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>                 std<span class="op">::</span>get_if<span class="op">&lt;</span>tabs<span class="op">::</span>TabCollectionHandle<span class="op">&gt;(&amp;</span>handle<span class="op">))</span> <span class="op">{</span></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="op">(!</span>collection<span class="op">-&gt;</span>Get<span class="op">())</span></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>      <span class="cf">continue</span><span class="op">;</span></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>    Notify<span class="op">(</span>events<span class="op">::</span>ToEvent<span class="op">(*</span>collection<span class="op">,</span> position<span class="op">,</span> <span class="op">*</span>tab_strip_model_adapter_<span class="op">,</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>                           insert_from_detached<span class="op">));</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a>  <span class="op">}</span></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div></td>
+<td><div class="sourceCode" id="cb9"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> <span class="op">(</span><span class="kw">const</span> <span class="kw">auto</span><span class="op">&amp;</span> handle <span class="op">:</span> handles<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>  handle <span class="kw">match</span> <span class="op">{</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> <span class="op">{</span> <span class="kw">const</span> tabs<span class="op">::</span>TabHandle<span class="op">&amp;</span> tab <span class="op">}</span> <span class="cf">if</span> <span class="op">(!</span>tab<span class="op">.</span>Get<span class="op">())</span> <span class="op">=&gt;</span> <span class="cf">continue</span><span class="op">;</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> <span class="op">{</span> <span class="kw">const</span> tabs<span class="op">::</span>TabHandle<span class="op">&amp;</span> tab <span class="op">}</span> <span class="op">=&gt;</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>        Notify<span class="op">(</span>events<span class="op">::</span>ToEvent<span class="op">(</span>tab<span class="op">,</span> position<span class="op">,</span> <span class="op">*</span>tab_strip_model_adapter_<span class="op">));</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> <span class="op">{</span> <span class="kw">const</span> tabs<span class="op">::</span>TabCollectionHandle<span class="op">&amp;</span> collection <span class="op">}</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="op">(!</span>collection<span class="op">.</span>Get<span class="op">())</span> <span class="op">=&gt;</span> <span class="cf">continue</span><span class="op">;</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> <span class="op">{</span> <span class="kw">const</span> tabs<span class="op">::</span>TabCollectionHandle<span class="op">&amp;</span> collection <span class="op">}</span> <span class="op">=&gt;</span></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>        Notify<span class="op">(</span>events<span class="op">::</span>ToEvent<span class="op">(</span>collection<span class="op">,</span> position<span class="op">,</span></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a>                               <span class="op">*</span>tab_strip_model_adapter_<span class="op">,</span></span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a>                               insert_from_detached<span class="op">));</span></span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a>  <span class="op">};</span></span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div></td>
+</tr>
+</tbody>
+</table>
+<p>This is a concrete reason for handlers to support jump statements
+that target the enclosing function or loop. Replacing this code with
+<code class="sourceCode cpp">std<span class="op">::</span>visit</code>
+would require translating
+<code class="sourceCode cpp"><span class="cf">continue</span></code>
+into an indirect convention.</p>
+<h1 data-number="7" id="results-and-composition"><span class="header-section-number">7</span> Results and composition<a href="#results-and-composition" class="self-link"></a></h1>
+<h2 data-number="7.1" id="valueerror-handling-inside-a-loop"><span class="header-section-number">7.1</span> Value/error handling inside a
+loop<a href="#valueerror-handling-inside-a-loop" class="self-link"></a></h2>
+<p>Chromium uses
+<code class="sourceCode cpp">base<span class="op">::</span>expected</code>
+extensively. Session construction parses each credential and either
+appends the value or returns the error from the enclosing function (<a href="https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/net/device_bound_sessions/session.cc#L204-L212">source</a>):</p>
+<table class="cmptable">
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th><div style="text-align:center">
+<strong>Before: inspect, then project</strong>
+</div></th>
+<th><div style="text-align:center">
+<strong>After: named projected states</strong>
+</div></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><div class="sourceCode" id="cb10"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> <span class="op">(</span><span class="kw">const</span> <span class="kw">auto</span><span class="op">&amp;</span> cred <span class="op">:</span> params<span class="op">.</span>credentials<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>  base<span class="op">::</span>expected<span class="op">&lt;</span>CookieCraving<span class="op">,</span> SessionError<span class="op">&gt;</span> craving <span class="op">=</span> CookieCraving<span class="op">::</span>Create<span class="op">(</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>      params<span class="op">.</span>fetcher_url<span class="op">,</span> cred<span class="op">.</span>name<span class="op">,</span> cred<span class="op">.</span>attributes<span class="op">,</span> base<span class="op">::</span>Time<span class="op">::</span>Now<span class="op">());</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> <span class="op">(</span>craving<span class="op">.</span>has_value<span class="op">())</span> <span class="op">{</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>    session<span class="op">-&gt;</span>cookie_cravings_<span class="op">.</span>push_back<span class="op">(</span>craving<span class="op">.</span>value<span class="op">());</span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>  <span class="op">}</span> <span class="cf">else</span> <span class="op">{</span></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> base<span class="op">::</span>unexpected<span class="op">(</span>SessionError<span class="op">{</span>std<span class="op">::</span>move<span class="op">(</span>craving<span class="op">.</span>error<span class="op">())});</span></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>  <span class="op">}</span></span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div></td>
+<td><div class="sourceCode" id="cb11"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> <span class="op">(</span><span class="kw">const</span> <span class="kw">auto</span><span class="op">&amp;</span> cred <span class="op">:</span> params<span class="op">.</span>credentials<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>  CookieCraving<span class="op">::</span>Create<span class="op">(</span>params<span class="op">.</span>fetcher_url<span class="op">,</span> cred<span class="op">.</span>name<span class="op">,</span> cred<span class="op">.</span>attributes<span class="op">,</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>                        base<span class="op">::</span>Time<span class="op">::</span>Now<span class="op">())</span> <span class="kw">match</span> <span class="op">{</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> <span class="op">{</span> <span class="op">.</span>value<span class="op">:</span> CookieCraving craving <span class="op">}</span> <span class="op">=&gt;</span></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>        session<span class="op">-&gt;</span>cookie_cravings_<span class="op">.</span>push_back<span class="op">(</span>std<span class="op">::</span>move<span class="op">(</span>craving<span class="op">));</span></span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> <span class="op">{</span> <span class="op">.</span>error<span class="op">:</span> SessionError error <span class="op">}</span> <span class="op">=&gt;</span></span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> base<span class="op">::</span>unexpected<span class="op">(</span>std<span class="op">::</span>move<span class="op">(</span>error<span class="op">));</span></span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>  <span class="op">};</span></span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div></td>
+</tr>
+</tbody>
+</table>
+<p>This supports named states without requiring
+<code class="sourceCode cpp">expected</code> to masquerade as a variant
+whose two alternatives happen to have distinct types. It also remains
+unambiguous when <code class="sourceCode cpp">T</code> and
+<code class="sourceCode cpp">E</code> are the same type.</p>
+<h2 data-number="7.2" id="result-variant-value-and-loop-control-together"><span class="header-section-number">7.2</span> Result, variant, value, and
+loop control together<a href="#result-variant-value-and-loop-control-together" class="self-link"></a></h2>
+<p>The HLS parser demonstrates why composability matters more than
+replacing an isolated
+<code class="sourceCode cpp"><span class="cf">if</span></code>. Each
+iteration first handles a parse result, then distinguishes line-item
+alternatives, then applies value tests and may
+<code class="sourceCode cpp"><span class="cf">break</span></code>,
+<code class="sourceCode cpp"><span class="cf">continue</span></code>, or
+return from the enclosing parser (<a href="https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/media/formats/hls/media_playlist.cc#L120-L151">source</a>):</p>
+<table class="cmptable">
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th><div style="text-align:center">
+<strong>Before: result handling followed by
+<code class="sourceCode cpp">get_if</code></strong>
+</div></th>
+<th><div style="text-align:center">
+<strong>After: nested protocols remain one selection</strong>
+</div></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><div class="sourceCode" id="cb12"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="cf">while</span> <span class="op">(</span><span class="kw">true</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">auto</span> item_result <span class="op">=</span> GetNextLineItem<span class="op">(&amp;</span>src_iter<span class="op">);</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> <span class="op">(!</span>item_result<span class="op">.</span>has_value<span class="op">())</span> <span class="op">{</span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">auto</span> error <span class="op">=</span> std<span class="op">::</span>move<span class="op">(</span>item_result<span class="op">).</span>error<span class="op">();</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="op">(</span>error<span class="op">.</span>code<span class="op">()</span> <span class="op">==</span> ParseStatusCode<span class="op">::</span>kReachedEOF<span class="op">)</span></span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>      <span class="cf">break</span><span class="op">;</span></span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> std<span class="op">::</span>move<span class="op">(</span>error<span class="op">);</span></span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>  <span class="op">}</span></span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a>  <span class="kw">auto</span> item <span class="op">=</span> std<span class="op">::</span>move<span class="op">(</span>item_result<span class="op">).</span>value<span class="op">();</span></span>
+<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> <span class="op">(</span><span class="kw">auto</span><span class="op">*</span> tag <span class="op">=</span> std<span class="op">::</span>get_if<span class="op">&lt;</span>TagItem<span class="op">&gt;(&amp;</span>item<span class="op">))</span> <span class="op">{</span></span>
+<span id="cb12-12"><a href="#cb12-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="op">(!</span>tag<span class="op">-&gt;</span>GetName<span class="op">().</span>has_value<span class="op">())</span> <span class="op">{</span></span>
+<span id="cb12-13"><a href="#cb12-13" aria-hidden="true" tabindex="-1"></a>      HandleUnknownTag<span class="op">(*</span>tag<span class="op">);</span></span>
+<span id="cb12-14"><a href="#cb12-14" aria-hidden="true" tabindex="-1"></a>      <span class="cf">continue</span><span class="op">;</span></span>
+<span id="cb12-15"><a href="#cb12-15" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb12-16"><a href="#cb12-16" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Dispatch on the tag kind and tag name.</span></span>
+<span id="cb12-17"><a href="#cb12-17" aria-hidden="true" tabindex="-1"></a>  <span class="op">}</span></span>
+<span id="cb12-18"><a href="#cb12-18" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div></td>
+<td><div class="sourceCode" id="cb13"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="cf">while</span> <span class="op">(</span><span class="kw">true</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>  GetNextLineItem<span class="op">(&amp;</span>src_iter<span class="op">)</span> <span class="kw">match</span> <span class="op">{</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> <span class="op">{</span> <span class="op">.</span>error<span class="op">:</span> <span class="kw">const</span> <span class="kw">auto</span><span class="op">&amp;</span> error <span class="op">}</span></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="op">(</span>error<span class="op">.</span>code<span class="op">()</span> <span class="op">==</span> ParseStatusCode<span class="op">::</span>kReachedEOF<span class="op">)</span> <span class="op">=&gt;</span> <span class="cf">break</span><span class="op">;</span></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> <span class="op">{</span> <span class="op">.</span>error<span class="op">:</span> <span class="kw">auto</span> error <span class="op">}</span> <span class="op">=&gt;</span> <span class="cf">return</span> error<span class="op">;</span></span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> <span class="op">{</span> <span class="op">.</span>value<span class="op">:</span> <span class="op">{</span> TagItem<span class="op">:</span> <span class="kw">auto</span><span class="op">&amp;&amp;</span> tag <span class="op">}</span> <span class="op">}</span></span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="op">(!</span>tag<span class="op">.</span>GetName<span class="op">().</span>has_value<span class="op">())</span> <span class="op">=&gt;</span> <span class="cf">do</span> <span class="op">{</span></span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>      HandleUnknownTag<span class="op">(</span>tag<span class="op">);</span></span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a>      <span class="cf">continue</span><span class="op">;</span></span>
+<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a>    <span class="op">};</span></span>
+<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> <span class="op">{</span> <span class="op">.</span>value<span class="op">:</span> <span class="op">{</span> TagItem<span class="op">:</span> <span class="kw">auto</span><span class="op">&amp;&amp;</span> tag <span class="op">}</span> <span class="op">}</span> <span class="op">=&gt;</span> <span class="cf">do</span> <span class="op">{</span></span>
+<span id="cb13-12"><a href="#cb13-12" aria-hidden="true" tabindex="-1"></a>      <span class="co">// Dispatch on the tag kind and tag name.</span></span>
+<span id="cb13-13"><a href="#cb13-13" aria-hidden="true" tabindex="-1"></a>    <span class="op">};</span></span>
+<span id="cb13-14"><a href="#cb13-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">default</span> <span class="op">=&gt;</span> <span class="op">;</span></span>
+<span id="cb13-15"><a href="#cb13-15" aria-hidden="true" tabindex="-1"></a>  <span class="op">};</span></span>
+<span id="cb13-16"><a href="#cb13-16" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div></td>
+</tr>
+</tbody>
+</table>
+<p>The rewrite is intentionally not claimed to shorten the full parser.
+It shows that named result states, closed alternatives, guards, and
+enclosing control flow must compose without introducing nested visitors
+or ad hoc status variables.</p>
+<h1 data-number="8" id="value-and-product-patterns"><span class="header-section-number">8</span> Value and product patterns<a href="#value-and-product-patterns" class="self-link"></a></h1>
+<h2 data-number="8.1" id="or-patterns-replace-grouped-labels"><span class="header-section-number">8.1</span> Or-patterns replace grouped
+labels<a href="#or-patterns-replace-grouped-labels" class="self-link"></a></h2>
+<p>The scanner found 10,016 runs of consecutive
+<code class="sourceCode cpp"><span class="cf">case</span></code> labels
+sharing one body. This is a direct lower bound for useful or-patterns. A
+small representative example groups the four credential modes into two
+outcomes (<a href="https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/services/network/url_loader_util.cc#L78-L93">source</a>):</p>
+<table class="cmptable">
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th><div style="text-align:center">
+<strong>Before: grouped
+<code class="sourceCode cpp"><span class="cf">switch</span></code>
+labels</strong>
+</div></th>
+<th><div style="text-align:center">
+<strong>After: or-patterns</strong>
+</div></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><div class="sourceCode" id="cb14"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="cf">switch</span> <span class="op">(</span>credentials_mode<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">case</span> mojom<span class="op">::</span>CredentialsMode<span class="op">::</span>kInclude<span class="op">:</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>  <span class="cf">case</span> mojom<span class="op">::</span>CredentialsMode<span class="op">::</span>kSameOrigin<span class="op">:</span></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="kw">true</span><span class="op">;</span></span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>  <span class="cf">case</span> mojom<span class="op">::</span>CredentialsMode<span class="op">::</span>kOmit<span class="op">:</span></span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>  <span class="cf">case</span> mojom<span class="op">::</span>CredentialsMode<span class="op">::</span>kOmitBug_775438_Workaround<span class="op">:</span></span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="kw">false</span><span class="op">;</span></span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div></td>
+<td><div class="sourceCode" id="cb15"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="cf">return</span> credentials_mode <span class="kw">match</span> <span class="op">{</span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">case</span> mojom<span class="op">::</span>CredentialsMode<span class="op">::</span>kInclude <span class="op">||</span></span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>       mojom<span class="op">::</span>CredentialsMode<span class="op">::</span>kSameOrigin <span class="op">=&gt;</span> <span class="kw">true</span><span class="op">;</span></span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>  <span class="cf">case</span> mojom<span class="op">::</span>CredentialsMode<span class="op">::</span>kOmit <span class="op">||</span></span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>       mojom<span class="op">::</span>CredentialsMode<span class="op">::</span>kOmitBug_775438_Workaround <span class="op">=&gt;</span> <span class="kw">false</span><span class="op">;</span></span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a><span class="op">};</span></span></code></pre></div></td>
+</tr>
+</tbody>
+</table>
+<p>This is not merely syntax for variants. Or-patterns are justified by
+ordinary enum dispatch at much greater scale.</p>
+<h2 data-number="8.2" id="product-matching-combines-related-tests"><span class="header-section-number">8.2</span> Product matching combines
+related tests<a href="#product-matching-combines-related-tests" class="self-link"></a></h2>
+<p>An offline-pages callback treats one pair of values as a
+distinguished case (<a href="https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/components/offline_pages/core/model/clear_storage_task.cc#L179-L193">source</a>):</p>
+<table class="cmptable">
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th><div style="text-align:center">
+<strong>Before: coordinate-wise tests</strong>
+</div></th>
+<th><div style="text-align:center">
+<strong>After: one product condition</strong>
+</div></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><div class="sourceCode" id="cb16"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="dt">void</span> ClearStorageTask<span class="op">::</span>OnClearPagesDone<span class="op">(</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>    std<span class="op">::</span>pair<span class="op">&lt;</span><span class="dt">size_t</span><span class="op">,</span> DeletePageResult<span class="op">&gt;</span> result<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> <span class="op">(</span>result<span class="op">.</span>first <span class="op">==</span> <span class="dv">0</span> <span class="op">&amp;&amp;</span> result<span class="op">.</span>second <span class="op">==</span> DeletePageResult<span class="op">::</span>SUCCESS<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>    InformClearStorageDone<span class="op">(</span>result<span class="op">.</span>first<span class="op">,</span> ClearStorageResult<span class="op">::</span>UNNECESSARY<span class="op">);</span></span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span><span class="op">;</span></span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>  <span class="op">}</span></span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a>  ClearStorageResult clear_result <span class="op">=</span> ClearStorageResult<span class="op">::</span>SUCCESS<span class="op">;</span></span>
+<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> <span class="op">(</span>result<span class="op">.</span>second <span class="op">!=</span> DeletePageResult<span class="op">::</span>SUCCESS<span class="op">)</span></span>
+<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a>    clear_result <span class="op">=</span> ClearStorageResult<span class="op">::</span>DELETE_FAILURE<span class="op">;</span></span>
+<span id="cb16-11"><a href="#cb16-11" aria-hidden="true" tabindex="-1"></a>  InformClearStorageDone<span class="op">(</span>result<span class="op">.</span>first<span class="op">,</span> clear_result<span class="op">);</span></span>
+<span id="cb16-12"><a href="#cb16-12" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div></td>
+<td><div class="sourceCode" id="cb17"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="dt">void</span> ClearStorageTask<span class="op">::</span>OnClearPagesDone<span class="op">(</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>    std<span class="op">::</span>pair<span class="op">&lt;</span><span class="dt">size_t</span><span class="op">,</span> DeletePageResult<span class="op">&gt;</span> result<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> <span class="op">(</span><span class="cf">case</span> <span class="op">[</span><span class="dv">0</span><span class="op">,</span> DeletePageResult<span class="op">::</span>SUCCESS<span class="op">]</span> <span class="op">=</span> result<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>    InformClearStorageDone<span class="op">(</span>result<span class="op">.</span>first<span class="op">,</span> ClearStorageResult<span class="op">::</span>UNNECESSARY<span class="op">);</span></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span><span class="op">;</span></span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>  <span class="op">}</span></span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a>  ClearStorageResult clear_result <span class="op">=</span> ClearStorageResult<span class="op">::</span>SUCCESS<span class="op">;</span></span>
+<span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> <span class="op">(</span>result<span class="op">.</span>second <span class="op">!=</span> DeletePageResult<span class="op">::</span>SUCCESS<span class="op">)</span></span>
+<span id="cb17-10"><a href="#cb17-10" aria-hidden="true" tabindex="-1"></a>    clear_result <span class="op">=</span> ClearStorageResult<span class="op">::</span>DELETE_FAILURE<span class="op">;</span></span>
+<span id="cb17-11"><a href="#cb17-11" aria-hidden="true" tabindex="-1"></a>  InformClearStorageDone<span class="op">(</span>result<span class="op">.</span>first<span class="op">,</span> clear_result<span class="op">);</span></span>
+<span id="cb17-12"><a href="#cb17-12" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div></td>
+</tr>
+</tbody>
+</table>
+<p>The corpus contains many conjunctions, but most combine unrelated
+predicates or range checks and should remain ordinary boolean code.
+Product patterns are valuable when the source already treats several
+components as one state; raw counts of
+<code class="sourceCode cpp"><span class="op">&amp;&amp;</span></code>
+conditions substantially overestimate that population.</p>
+<h1 data-number="9" id="open-runtime-type-refinement"><span class="header-section-number">9</span> Open runtime type refinement<a href="#open-runtime-type-refinement" class="self-link"></a></h1>
+<p>Chromium’s C++ RTTI use is not representative of its dynamic type
+dispatch. Blink defines
+<code class="sourceCode cpp">IsA<span class="op">&lt;</span>T<span class="op">&gt;</span></code>,
+<code class="sourceCode cpp">To<span class="op">&lt;</span>T<span class="op">&gt;</span></code>,
+and
+<code class="sourceCode cpp">DynamicTo<span class="op">&lt;</span>T<span class="op">&gt;</span></code>
+on top of
+<code class="sourceCode cpp">DowncastTraits<span class="op">&lt;</span>T<span class="op">&gt;</span></code>
+(<a href="https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/third_party/blink/renderer/platform/wtf/casting.h#L68-L193">protocol</a>).
+The survey found 4,313 <code class="sourceCode cpp">DynamicTo</code>
+calls and 1,493 <code class="sourceCode cpp">IsA</code> calls, compared
+with no executable C++
+<code class="sourceCode cpp"><span class="kw">dynamic_cast</span></code>
+expression.</p>
+<p>For example, CSS pseudo-class handling performs a five-way ordered
+refinement (<a href="https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/third_party/blink/renderer/core/css/selector_checker.cc#L2999-L3021">source</a>):</p>
+<table class="cmptable">
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th><div style="text-align:center">
+<strong>Before: project-specific cast chain</strong>
+</div></th>
+<th><div style="text-align:center">
+<strong>After: open refinement through
+<code class="sourceCode cpp"><span class="op">{</span> declaration <span class="op">}</span></code></strong>
+</div></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><div class="sourceCode" id="cb18"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="op">(</span><span class="kw">auto</span><span class="op">*</span> dialog <span class="op">=</span> DynamicTo<span class="op">&lt;</span>HTMLDialogElement<span class="op">&gt;(</span>element<span class="op">))</span> <span class="op">{</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> dialog<span class="op">-&gt;</span>FastHasAttribute<span class="op">(</span>html_names<span class="op">::</span>kOpenAttr<span class="op">);</span></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a><span class="op">}</span> <span class="cf">else</span> <span class="cf">if</span> <span class="op">(</span><span class="kw">auto</span><span class="op">*</span> details <span class="op">=</span> DynamicTo<span class="op">&lt;</span>HTMLDetailsElement<span class="op">&gt;(</span>element<span class="op">))</span> <span class="op">{</span></span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> details<span class="op">-&gt;</span>FastHasAttribute<span class="op">(</span>html_names<span class="op">::</span>kOpenAttr<span class="op">);</span></span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span> <span class="cf">else</span> <span class="cf">if</span> <span class="op">(</span><span class="kw">auto</span><span class="op">*</span> select <span class="op">=</span> DynamicTo<span class="op">&lt;</span>HTMLSelectElement<span class="op">&gt;(</span>element<span class="op">))</span> <span class="op">{</span></span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> select<span class="op">-&gt;</span>PopupIsVisible<span class="op">();</span></span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span> <span class="cf">else</span> <span class="cf">if</span> <span class="op">(</span><span class="kw">auto</span><span class="op">*</span> input <span class="op">=</span> DynamicTo<span class="op">&lt;</span>HTMLInputElement<span class="op">&gt;(</span>element<span class="op">))</span> <span class="op">{</span></span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> input<span class="op">-&gt;</span>IsPickerVisible<span class="op">();</span></span>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span> <span class="cf">else</span> <span class="cf">if</span> <span class="op">(</span><span class="kw">auto</span><span class="op">*</span> menuitem <span class="op">=</span> DynamicTo<span class="op">&lt;</span>HTMLMenuItemElement<span class="op">&gt;(</span>element<span class="op">))</span> <span class="op">{</span></span>
+<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> menuitem<span class="op">-&gt;</span>IsSubmenuOpen<span class="op">();</span></span>
+<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a><span class="cf">return</span> <span class="kw">false</span><span class="op">;</span></span></code></pre></div></td>
+<td><div class="sourceCode" id="cb19"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="cf">return</span> element <span class="kw">match</span> <span class="op">{</span></span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">case</span> <span class="op">{</span> HTMLDialogElement<span class="op">&amp;</span> dialog <span class="op">}</span> <span class="op">=&gt;</span></span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>      dialog<span class="op">.</span>FastHasAttribute<span class="op">(</span>html_names<span class="op">::</span>kOpenAttr<span class="op">);</span></span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>  <span class="cf">case</span> <span class="op">{</span> HTMLDetailsElement<span class="op">&amp;</span> details <span class="op">}</span> <span class="op">=&gt;</span></span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>      details<span class="op">.</span>FastHasAttribute<span class="op">(</span>html_names<span class="op">::</span>kOpenAttr<span class="op">);</span></span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>  <span class="cf">case</span> <span class="op">{</span> HTMLSelectElement<span class="op">&amp;</span> select <span class="op">}</span> <span class="op">=&gt;</span> select<span class="op">.</span>PopupIsVisible<span class="op">();</span></span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a>  <span class="cf">case</span> <span class="op">{</span> HTMLInputElement<span class="op">&amp;</span> input <span class="op">}</span> <span class="op">=&gt;</span> input<span class="op">.</span>IsPickerVisible<span class="op">();</span></span>
+<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a>  <span class="cf">case</span> <span class="op">{</span> HTMLMenuItemElement<span class="op">&amp;</span> menuitem <span class="op">}</span> <span class="op">=&gt;</span> menuitem<span class="op">.</span>IsSubmenuOpen<span class="op">();</span></span>
+<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a>  <span class="cf">default</span> <span class="op">=&gt;</span> <span class="kw">false</span><span class="op">;</span></span>
+<span id="cb19-10"><a href="#cb19-10" aria-hidden="true" tabindex="-1"></a><span class="op">};</span></span></code></pre></div></td>
+</tr>
+</tbody>
+</table>
+<p>The after form requires an open projection customization whose
+<code class="sourceCode cpp">try_cast<span class="op">&lt;</span>T<span class="op">&gt;</span></code>
+uses Blink’s
+<code class="sourceCode cpp">DynamicTo<span class="op">&lt;</span>T<span class="op">&gt;</span></code>.
+Treating only C++ polymorphic classes specially would leave the dominant
+Chromium hierarchy unsupported. Conversely, core language matching
+should not attempt to infer Blink’s class discriminator; the
+project-specific cast operation is the semantic authority.</p>
+<p>This evidence favors one
+<code class="sourceCode cpp"><span class="op">{</span> declaration <span class="op">}</span></code>
+runtime-refinement syntax with multiple providers:</p>
+<ul>
+<li>closed indexed
+<code class="sourceCode cpp">alternative_traits</code> for
+<code class="sourceCode cpp">variant</code>,
+<code class="sourceCode cpp">optional</code>, and
+<code class="sourceCode cpp">expected</code>;</li>
+<li>built-in
+<code class="sourceCode cpp"><span class="kw">dynamic_cast</span></code>
+semantics for ordinary polymorphic classes; and</li>
+<li>an open
+<code class="sourceCode cpp">try_cast<span class="op">&lt;</span>T<span class="op">&gt;</span></code>
+customization for <code class="sourceCode cpp">any</code>-like and
+project-defined hierarchies.</li>
+</ul>
+<h1 data-number="10" id="where-match-is-not-automatically-better"><span class="header-section-number">10</span> Where
+<code class="sourceCode cpp"><span class="kw">match</span></code> is not
+automatically better<a href="#where-match-is-not-automatically-better" class="self-link"></a></h1>
+<h2 data-number="10.1" id="one-generic-operation"><span class="header-section-number">10.1</span> One generic operation<a href="#one-generic-operation" class="self-link"></a></h2>
+<p>Ninety-nine visitors apply one generic operation to every
+alternative. The paint iterator contains several clear examples (<a href="https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/cc/paint/paint_op_buffer_iterator.h#L174-L204">source</a>):</p>
+<table class="cmptable">
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th><div style="text-align:center">
+<strong>Existing code</strong>
+</div></th>
+<th><div style="text-align:center">
+<strong>Possible match spelling</strong>
+</div></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><div class="sourceCode" id="cb20"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="kw">const</span> PaintOp<span class="op">*</span> get<span class="op">()</span> <span class="kw">const</span> <span class="op">{</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> std<span class="op">::</span>visit<span class="op">([](</span><span class="kw">const</span> <span class="kw">auto</span><span class="op">&amp;</span> iter<span class="op">)</span> <span class="op">{</span> <span class="cf">return</span> iter<span class="op">.</span>get<span class="op">();</span> <span class="op">},</span> iter_<span class="op">);</span></span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>CompositeIterator<span class="op">&amp;</span> <span class="kw">operator</span><span class="op">++()</span> <span class="op">{</span></span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>  std<span class="op">::</span>visit<span class="op">([](</span><span class="kw">auto</span><span class="op">&amp;</span> iter<span class="op">)</span> <span class="op">{</span> <span class="op">++</span>iter<span class="op">;</span> <span class="op">},</span> iter_<span class="op">);</span></span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> <span class="op">*</span><span class="kw">this</span><span class="op">;</span></span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div></td>
+<td><div class="sourceCode" id="cb21"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="kw">const</span> PaintOp<span class="op">*</span> get<span class="op">()</span> <span class="kw">const</span> <span class="op">{</span></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> iter_ <span class="kw">match</span> <span class="op">{</span> <span class="cf">case</span> <span class="op">{</span> <span class="kw">const</span> <span class="kw">auto</span><span class="op">&amp;</span> iter <span class="op">}</span> <span class="op">=&gt;</span> iter<span class="op">.</span>get<span class="op">();</span> <span class="op">};</span></span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>CompositeIterator<span class="op">&amp;</span> <span class="kw">operator</span><span class="op">++()</span> <span class="op">{</span></span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>  iter_ <span class="kw">match</span> <span class="op">{</span> <span class="cf">case</span> <span class="op">{</span> <span class="kw">auto</span><span class="op">&amp;</span> iter <span class="op">}</span> <span class="op">=&gt;</span> <span class="op">++</span>iter<span class="op">;</span> <span class="op">};</span></span>
+<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> <span class="op">*</span><span class="kw">this</span><span class="op">;</span></span>
+<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div></td>
+</tr>
+</tbody>
+</table>
+<p>The match spelling is comparable, not clearly superior. The visitor
+already states the useful fact: perform one generic operation on the
+active value. The language design should not be judged by replacing
+these calls.</p>
+<h2 data-number="10.2" id="correlated-multi-variant-dispatch"><span class="header-section-number">10.2</span> Correlated multi-variant
+dispatch<a href="#correlated-multi-variant-dispatch" class="self-link"></a></h2>
+<p>Only two
+<code class="sourceCode cpp">std<span class="op">::</span>visit</code>
+calls in the corpus pass multiple variants. One checks whether two log
+events have the same active type before calling a type-specific
+operation (<a href="https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/components/autofill/core/browser/autofill_field.cc#L344-L358">source</a>):</p>
+<div class="sourceCode" id="cb22"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="cf">return</span> std<span class="op">::</span>visit<span class="op">(</span></span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>    <span class="op">[](</span><span class="kw">const</span> <span class="kw">auto</span><span class="op">&amp;</span> e1<span class="op">,</span> <span class="kw">const</span> <span class="kw">auto</span><span class="op">&amp;</span> e2<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>      <span class="cf">if</span> <span class="kw">constexpr</span> <span class="op">(</span>std<span class="op">::</span>is_same_v<span class="op">&lt;</span><span class="kw">decltype</span><span class="op">(</span>e1<span class="op">),</span> <span class="kw">decltype</span><span class="op">(</span>e2<span class="op">)&gt;)</span></span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> AreCollapsible<span class="op">(</span>e1<span class="op">,</span> e2<span class="op">);</span></span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>      <span class="cf">return</span> <span class="kw">false</span><span class="op">;</span></span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">},</span></span>
+<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a>    event1<span class="op">,</span> event2<span class="op">);</span></span></code></pre></div>
+<p>The current pattern vocabulary does not have a concise relational
+pattern meaning “the second projected alternative has the same type as
+the first”. Enumerating every same-type pair would be worse. This
+visitor should remain a visitor unless a future proposal adds
+relationships between bindings. The low frequency in this corpus argues
+against complicating P2688R6 for this case.</p>
+<h2 data-number="10.3" id="simple-nullable-tests"><span class="header-section-number">10.3</span> Simple nullable tests<a href="#simple-nullable-tests" class="self-link"></a></h2>
+<p>The volume of <code class="sourceCode cpp">optional</code> use does
+not imply that every
+<code class="sourceCode cpp"><span class="cf">if</span> <span class="op">(</span>value<span class="op">)</span></code>
+should be rewritten. A direct boolean test followed by
+<code class="sourceCode cpp"><span class="op">*</span>value</code> is
+already established and concise. Match becomes compelling when the
+nullable state composes with a payload pattern, a guard, another choice,
+or a selection expression. This is why the protocol is high priority
+even though many individual migrations have little syntactic payoff.</p>
+<p><code class="sourceCode cpp">StringViewOrString<span class="op">::</span>get<span class="op">()</span></code>
+is a representative small <code class="sourceCode cpp">optional</code>
+branch (<a href="https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/base/base64url.cc#L27-L41">source</a>):</p>
+<table class="cmptable">
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th><div style="text-align:center">
+<strong>Before: direct optional test</strong>
+</div></th>
+<th><div style="text-align:center">
+<strong>After: optional projection</strong>
+</div></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><div class="sourceCode" id="cb23"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>std<span class="op">::</span>string_view get<span class="op">()</span> <span class="kw">const</span> <span class="op">{</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> <span class="op">(</span>str_<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="op">*</span>str_<span class="op">;</span></span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>  <span class="op">}</span></span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> piece_<span class="op">;</span></span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div></td>
+<td><div class="sourceCode" id="cb24"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>std<span class="op">::</span>string_view get<span class="op">()</span> <span class="kw">const</span> <span class="op">{</span></span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> str_ <span class="kw">match</span> <span class="op">{</span></span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> <span class="op">{</span> <span class="kw">const</span> std<span class="op">::</span>string<span class="op">&amp;</span> str <span class="op">}</span> <span class="op">=&gt;</span> str<span class="op">;</span></span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> <span class="op">{}</span> <span class="op">=&gt;</span> piece_<span class="op">;</span></span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>  <span class="op">};</span></span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div></td>
+</tr>
+</tbody>
+</table>
+<p>The same shape occurs with raw pointers.
+<code class="sourceCode cpp">GetWindowPropertyAsWindow<span class="op">()</span></code>
+tests a lookup result and either dereferences it or returns a sentinel
+(<a href="https://github.com/chromium/chromium/blob/45613f3c80b1f207dc2c79eb6b82e1d63e76ffa5/ui/gfx/x/connection.cc#L94-L99">source</a>):</p>
+<table class="cmptable">
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th><div style="text-align:center">
+<strong>Before: direct pointer test</strong>
+</div></th>
+<th><div style="text-align:center">
+<strong>After: pointer projection</strong>
+</div></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><div class="sourceCode" id="cb25"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="op">(</span><span class="kw">const</span> Window<span class="op">*</span> wm_window <span class="op">=</span> PropertyCache<span class="op">::</span>GetAs<span class="op">&lt;</span>Window<span class="op">&gt;(</span>value<span class="op">))</span> <span class="op">{</span></span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> <span class="op">*</span>wm_window<span class="op">;</span></span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a><span class="cf">return</span> Window<span class="op">::</span>None<span class="op">;</span></span></code></pre></div></td>
+<td><div class="sourceCode" id="cb26"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="cf">return</span> PropertyCache<span class="op">::</span>GetAs<span class="op">&lt;</span>Window<span class="op">&gt;(</span>value<span class="op">)</span> <span class="kw">match</span> <span class="op">{</span></span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">case</span> <span class="op">{</span> <span class="kw">const</span> Window<span class="op">&amp;</span> wm_window <span class="op">}</span> <span class="op">=&gt;</span> wm_window<span class="op">;</span></span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>  <span class="cf">case</span> <span class="op">{}</span> <span class="op">=&gt;</span> Window<span class="op">::</span>None<span class="op">;</span></span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a><span class="op">};</span></span></code></pre></div></td>
+</tr>
+</tbody>
+</table>
+<p>These examples validate the
+<code class="sourceCode cpp"><span class="op">{</span> P <span class="op">}</span></code>
+and <code class="sourceCode cpp"><span class="op">{}</span></code>
+vocabulary, but they are not strong syntactic wins. More persuasive uses
+combine the projection with value patterns or additional structure, as
+in the earlier result and HLS examples.</p>
+<h1 data-number="11" id="conclusions"><span class="header-section-number">11</span> Conclusions<a href="#conclusions" class="self-link"></a></h1>
+<p>The Chromium evidence supports the following priorities for
+P2688R6:</p>
+<ol type="1">
+<li>Keep declaration patterns concise for closed alternatives. Explicit
+overload visitors are common enough that
+<code class="sourceCode cpp"><span class="cf">case</span> <span class="op">{</span> T value <span class="op">}</span></code>
+is a central use case, not an escape hatch.</li>
+<li>Specify nullable and result protocols alongside
+<code class="sourceCode cpp">variant</code>. In this corpus,
+<code class="sourceCode cpp">optional</code> and
+<code class="sourceCode cpp">base<span class="op">::</span>expected</code>
+are substantially more prevalent.</li>
+<li>Preserve enclosing
+<code class="sourceCode cpp"><span class="cf">return</span></code>,
+<code class="sourceCode cpp"><span class="cf">break</span></code>, and
+<code class="sourceCode cpp"><span class="cf">continue</span></code>.
+This is a material advantage over visitor lambdas and explains many
+manual <code class="sourceCode cpp">get_if</code> chains.</li>
+<li>Retain full pattern composition. Real parsers combine result state,
+alternative type, value tests, guards, and control flow in one
+operation.</li>
+<li>Include or-patterns. Consecutive grouped switch labels are
+widespread and provide direct, language-independent evidence.</li>
+<li>Provide an open cast customization. Built-in
+<code class="sourceCode cpp"><span class="kw">dynamic_cast</span></code>
+semantics are useful, but they do not cover Blink’s dominant dispatch
+model.</li>
+<li>Do not optimize the design for one-operation generic visitors or
+rare correlated multi-variant visitors. Existing C++ is already
+competitive for those shapes.</li>
+</ol>
+<p>The broad conclusion is not that every branch should become a
+pattern. The largest gains occur where C++ currently separates testing,
+projection, binding, and control flow across several constructs. Pattern
+matching is most valuable when it reunifies those operations while
+retaining ordinary C++ value categories and enclosing control flow.</p>
+</div>
+</div>
+<script>
+const body = document.body;
+const noSyntaxHighlightingCheckbox = document.getElementById('no-syntax-highlighting-toggle');
+noSyntaxHighlightingCheckbox.checked = false;
+noSyntaxHighlightingCheckbox.addEventListener('change', () => {
+  body.dataset.syntaxHighlighting = noSyntaxHighlightingCheckbox.checked ? 'off' : 'on';
+});
+
+const hideDeletedTextCheckbox = document.getElementById('hide-deleted-text-toggle');
+hideDeletedTextCheckbox.checked = false;
+hideDeletedTextCheckbox.addEventListener('change', () => {
+  body.dataset.deletedText = hideDeletedTextCheckbox.checked ? 'hide' : 'show';
+});
+</script>
+</body>
+</html>
