@@ -13,31 +13,7 @@ highlighting:
     cpp: ["match", "let", "inspect", "do_return", "is", "as"]
 ---
 
-<style>
-details.revision-history > summary {
-  list-style: none;
-}
-details.revision-history > summary::-webkit-details-marker {
-  display: none;
-}
-#revision-history::before {
-  content: "\25B6";
-  display: inline-block;
-  width: 1.4em;
-  font-size: 0.55em;
-  vertical-align: 0.1em;
-}
-details.revision-history[open] > summary > #revision-history::before {
-  content: "\25BC";
-}
-</style>
-
-<details class="revision-history" markdown="1">
-<summary>
-
-# Revision History {- style="display: inline-block"}
-
-</summary>
+# Revision History {- .collapsed}
 
 ## R5 → R6 {- .unlisted #r5-to-r6}
   - Prior to the Hagenberg meeting in January 2025, further implementation
@@ -196,8 +172,6 @@ spellings rather than mechanical source transformations.
     >  SF    F   N   A   SA
     > ----  --- --- --- ----
     >  13    9   2   1   0
-
-</details>
 
 # Introduction
 

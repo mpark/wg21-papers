@@ -495,6 +495,37 @@ color: var(--rm-color);
 .draftnote {
 color: var(--note-color);
 }
+details.collapsed > summary {
+list-style: none;
+cursor: pointer;
+}
+details.collapsed > summary::-webkit-details-marker {
+display: none;
+}
+details.collapsed > summary .collapse-marker {
+--collapse-marker-offset: 0.15em;
+display: inline-block;
+width: 0;
+margin-right: 0.5em;
+height: 0;
+border-top: 0.3em solid transparent;
+border-bottom: 0.3em solid transparent;
+border-left: 0.45em solid currentColor;
+transform: translateX(var(--collapse-marker-offset));
+transform-origin: 0.15em center;
+vertical-align: 0.1em;
+}
+details.collapsed > summary .collapse-marker:first-child {
+--collapse-marker-offset: 0.075em;
+width: calc(35pt - 0.45em);
+margin-right: 0.25em;
+}
+details.collapsed[open] > summary .collapse-marker {
+transform: translateX(var(--collapse-marker-offset)) rotate(90deg);
+}
+details.collapsed > summary > :is(h1, h2, h3, h4, h5, h6) {
+margin-bottom: 0;
+}
 
 div.sourceCode {
 padding: 0.5em;
@@ -1578,8 +1609,7 @@ background-color: #4b6345;
 <div class="toc-progress" aria-hidden="true"><span class="toc-progress-bar"></span></div>
 </div>
 <ul>
-<li><a href="#revision-history" id="toc-revision-history">Revision
-History</a></li>
+<li><a href="#revision-history" id="toc-revision-history"><span class="collapse-marker"></span>Revision History</a></li>
 <li><a href="#introduction" id="toc-introduction"><span class="toc-section-number">1</span> Introduction</a></li>
 <li><a href="#the-proposal-in-examples" id="toc-the-proposal-in-examples"><span class="toc-section-number">2</span> The Proposal in Examples</a>
 <ul>
@@ -1755,27 +1785,9 @@ Structures</a></li>
 <li><a href="#bibliography" id="toc-bibliography"><span class="toc-section-number">19</span> References</a></li>
 </ul>
 </nav>
-<style>
-details.revision-history > summary {
-list-style: none;
-}
-details.revision-history > summary::-webkit-details-marker {
-display: none;
-}
-#revision-history::before {
-content: "\25B6";
-display: inline-block;
-width: 1.4em;
-font-size: 0.55em;
-vertical-align: 0.1em;
-}
-details.revision-history[open] > summary > #revision-history::before {
-content: "\25BC";
-}
-</style>
-<details class="revision-history">
+<details class="collapsed">
 <summary>
-<h1 class="unnumbered" style="display: inline-block" id="revision-history">Revision History<a href="#revision-history" class="self-link"></a></h1>
+<h1 class="unnumbered" id="revision-history"><span class="collapse-marker"></span>Revision History<a href="#revision-history" class="self-link"></a></h1>
 </summary>
 <h2 class="unnumbered unlisted" id="r5-to-r6">R5 → R6<a href="#r5-to-r6" class="self-link"></a></h2>
 <ul>
