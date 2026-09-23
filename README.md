@@ -5,6 +5,7 @@ This repository contains the source code for various proposals and the
 
 ## Active
 
+- [P2688R6][]: Pattern Matching with `match` and `case`
 - [P3549R0][]: Diverging expressions - with Bruno Cardoso Lopes, Zach Laine, and Barry Revzin.
 - [P2806R5][]: `do` expressions - with Bruno Cardoso Lopes, Zach Laine, and Barry Revzin.
 
@@ -27,18 +28,18 @@ This repository contains the source code for various proposals and the
 - [D0080R1][]: Tweaks to the Kona Variant - encouraged to return as P-papers.
 - [P0080R0][]: Variant: Discriminated Union with Value Semantics - not presented.
 
+[P2688R6]: https://wg21.link/P2688R6
 [P3549R0]: https://wg21.link/P3549R0
-[P3527R1]: generated/P3527R1.html
-[P3521R0]: generated/P3521R0.html
+[P3527R1]: https://wg21.link/P3527R1
+[P3521R0]: https://wg21.link/P3521R0
 [P2806R5]: https://wg21.link/P2806R5
-[P2688R5]: generated/P2688R5.html
 [P3476R0]: https://wg21.link/P3476R0
 [P2211R0]: https://wg21.link/P2211R0
 [P2169R4]: https://wg21.link/P2169R4
-[P1469R0]: generated/P1469R0.pdf
-[P1371R3]: generated/P1371R3.pdf
-[P1260R0]: generated/P1260R0.pdf
-[P0655R1]: generated/P0655R1.pdf
+[P1469R0]: https://wg21.link/P1469R0
+[P1371R3]: https://wg21.link/P1371R3
+[P1260R0]: https://wg21.link/P1260R0
+[P0655R1]: https://wg21.link/P0655R1
 [D0080R1]: generated/D0080R1.pdf
-[P0080R0]: generated/P0080R0.pdf
-[N3887]: generated/N3887.pdf
+[P0080R0]: https://wg21.link/P0080R0
+[N3887]: https://wg21.link/N3887
