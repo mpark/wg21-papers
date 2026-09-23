@@ -1,3 +1,3 @@
-PAPER_RULE := P2688R6:match
+PAPER_RULE := D2688R7:match
 -include ../local.mk
 include ../wg21/paper.mk
