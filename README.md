@@ -29,6 +29,7 @@ This repository contains the source code for various proposals and the
 - [P0080R0][]: Variant: Discriminated Union with Value Semantics - not presented.
 
 [P2688R6]: https://wg21.link/P2688R6
+[P2688R6]: https://wg21.link/P2688R5
 [P3549R0]: https://wg21.link/P3549R0
 [P3527R1]: https://wg21.link/P3527R1
 [P3521R0]: https://wg21.link/P3521R0
