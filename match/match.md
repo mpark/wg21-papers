@@ -15,6 +15,12 @@ highlighting:
 
 # Revision History {- .collapsed}
 
+## R6 → R7 {- .unlisted #r6-to-r7}
+  - Declaration-pattern applicability now uses restricted ordinary
+    initialization. Non-reference declarations admit same-type, base-class,
+    and restricted pointer relationships; reference declarations require a
+    reference-compatible subject.
+
 ## R5 → R6 {- .unlisted #r5-to-r6}
   - Prior to the Hagenberg meeting in January 2025, further implementation
     work was completed.
@@ -825,13 +831,11 @@ match (E) {
 }
 ```
 
-Declaration patterns do not accept general implicit conversion. Ordinary
-declaration matching admits standard conversion sequences of Exact Match rank
-and direct derived-to-base reference binding. If that does not apply, a class
-declaration can use the corresponding pointer-form `dynamic_cast` against a
-polymorphic class subject. Once the pattern matches, a named declaration is
-copy-initialized from the current subject. Omitting the name still requires
-that initialization to be well-formed, but does not perform it.
+Declaration patterns do not accept general implicit conversion. They use the
+restricted relationships described in [Declaration Patterns]. Matching and
+initialization are distinct: a named declaration initializes only after the
+complete pattern matches, while an omitted-name declaration checks that
+initialization without performing it.
 
 # Pattern Matching Constructs
 
@@ -1338,24 +1342,76 @@ also admits structured-binding declarations, but not storage-class forms such
 as `static` and `thread_local`. The disambiguation is discussed further in
 [Declaration-Pattern Syntax](#declaration-pattern-syntax).
 
-We generally restrict applicability to exact-match standard conversion
-sequences: identity, lvalue transformations, qualification adjustment, and
-function pointer conversion. A declaration of reference type can additionally
-bind directly through a derived-to-base conversion to a base-class subobject of
-the current subject. Promotions, other conversion-rank standard conversions,
-and user-defined conversions do not make a declaration pattern applicable.
+### Static Declaration Matching
 
-The derived-to-base case is ordinary static reference binding. It does not
-require a polymorphic type, perform a runtime test, or permit by-value slicing.
+Applicability is based on ordinary declaration initialization. Let `$E$` be the
+current subject expression and `$D$` the declared type after placeholder
+deduction, if any. The declaration is statically applicable when the implicit
+conversion sequence for copy-initializing `$D$` from `$E$` is a standard
+conversion sequence and one of the following holds:
+
+1. `$D$` is not a reference type and, after removing top-level cv-qualifiers,
+   `$D$` is the subject type or an unambiguous base class of the subject type.
+2. `$D$` is not a reference type, `$D$` and the subject are pointer or
+   pointer-to-member types, and, after any lvalue-to-rvalue conversion, they
+   differ only by the permitted standard pointer, function-pointer, and
+   qualification conversions.
+3. `$D$` is a reference type and the type referred to by `$D$` is
+   reference-compatible with the type of `$E$` as specified in [dcl.init.ref].
+
+Base-class accessibility and initialization are checked in the context of the
+match. Requiring the subject itself to have pointer or pointer-to-member type
+excludes conversion from `std::nullptr_t`, integer null pointer constants,
+array-to-pointer conversion, and function-to-pointer conversion. To match a
+null pointer value, use `nullptr`. Arrays and functions can be captured by
+corresponding reference declarations.
+
+Promotions, numeric conversions, and user-defined conversions do not make a
+declaration pattern viable.
+
+As with value patterns, a `bool` declaration matches a `bool`, not an `int`.
+Allowing conversions would let an earlier `bool` declaration take a value
+intended for a later `int` declaration:
+
+```cpp
+match (int_value) {
+  case bool value => use(value); // error: bool is not applicable to int
+  case true       => use_true(); // error: true is not applicable to int
+  case int value  => use(value);
+}
+```
+
+Reference compatibility prevents a reference declaration from binding to a
+temporary produced by converting the subject to another type. It does not
+prevent materializing a prvalue of the same type. A non-reference declaration
+instead produces a new value.
+
+The permitted pointer conversions keep pointing to the same object, a base
+subobject, or the same function. They do not invoke user code. For example, an
+`int*` subject can match a `const int*` declaration:
+
+```cpp
+match (pointer) {
+  case const int* value => use(value);
+}
+```
+
+As with a base-class declaration, a broader pointer declaration can make a
+later narrower declaration redundant.
+
+The derived-to-base case does not require a polymorphic type or perform a
+runtime test. A reference binds the base subobject. A non-reference declaration
+copies or moves that subobject and may slice. Accessibility is checked in the
+context of the match, as it is for ordinary initialization.
 
 If static declaration matching does not apply, a class declaration can use the
 runtime polymorphic cast described in [Polymorphic Class Matching]. Runtime
-polymorphic matching does not apply to pointer declarations; matching a
+polymorphic matching does not apply to pointer declarations. Matching a
 pointee requires the explicit nullable projection described in
 [Pointer Subjects].
 
-Cases remain source-ordered. Overload ranking defines the conversions admitted
-by declaration matching; it does not reorder cases as an overload set would.
+Cases remain source-ordered. Declaration applicability does not rank or reorder
+cases as an overload set would.
 
 ### Applicability Versus Failed Initialization
 
@@ -1685,10 +1741,9 @@ are discussed in [Alternative Projection and Polymorphic Casts].
 
 ## Static Matching and Runtime Polymorphic Casts
 
-A declaration pattern first tries static declaration matching: an exact-match
-standard conversion, or direct derived-to-base binding for a reference
-declaration. If that does not apply, a class declaration can apply the
-corresponding pointer-form `dynamic_cast` to a polymorphic class subject:
+A declaration pattern first tries [Static Declaration Matching]. If that
+does not apply, a class declaration can apply the corresponding pointer-form
+`dynamic_cast` to a polymorphic class subject:
 
 ```cpp
 void draw(Shape& shape) {
@@ -1790,9 +1845,10 @@ could also change from static type selection to a nullable runtime test as `T`
 changes.
 
 We therefore do not perform runtime polymorphic casts from one pointer type to
-another. Pointer declarations keep their ordinary exact-match behavior. To
-test the pointee's runtime type, first match the non-null state and then match
-the resulting object:
+another. Pointer declarations admit the restricted static pointer relationships
+in [Static Declaration Matching], but no runtime downcast. To test the
+pointee's runtime type, first match the non-null state and then match the
+resulting object:
 
 ```cpp
 void draw_shape(Shape* shape) {
@@ -1821,8 +1877,8 @@ match (value) {
 }
 ```
 
-For a known `Shape*` subject, a bare `Circle*` pattern is not an exact match and
-is ill-formed. In a dependent match it follows the general rules for a
+For a known `Shape*` subject, a bare `Circle*` pattern is not applicable and is
+ill-formed. In a dependent match it follows the general rules for a
 potentially applicable declaration case; it does not acquire runtime
 polymorphic pointer-cast semantics:
 
@@ -3278,9 +3334,41 @@ match (value) {
 ```
 
 If arbitrary conversions were admitted, the `int` declaration could consume a
-`double` and make the second case dead. This paper instead uses exact-match
-rank, plus direct derived-to-base reference binding, and lets usefulness
-analysis diagnose domination among the conversions that remain.
+`double` and make the second case dead. This paper instead uses the restricted
+declaration relationship above and lets usefulness analysis diagnose
+domination among the conversions that remain.
+
+Exception handlers provide precedent for using a restricted set of structural
+type relationships in source-ordered selection rather than general implicit
+conversion. They are not the specification model. Exception matching operates
+on an exception object, has special rules for pointer-reference handlers,
+requires public bases independently of context, and permits `std::nullptr_t`
+to match pointer handlers. Those properties are not appropriate for a
+declaration initialized from an existing expression.
+
+In particular, permitting reference initialization when the referred-to and
+subject types are not reference-compatible would make source order silently
+replace overload ranking:
+
+```cpp {.not_proposed}
+match (short_value) {
+  case const int& value   => use_integer(value);
+  case const short& value => use_short(value);
+}
+```
+
+The first case would consume every `short` by binding to a converted `int`
+temporary. The same issue is more surprising after alternative projection:
+
+```cpp {.not_proposed}
+variant<short, string> value;
+
+match (value) {
+  case { const int& converted }  => use(converted);
+  case { const short& original } => use(original); // unreachable for short
+  case { const string& text }    => use(text);
+}
+```
 
 The distinction between applicability and initialization follows ordinary
 overload resolution:
@@ -3382,8 +3470,9 @@ form remains `{ true }` and `{ false }`.
 We also considered treating cases as an overload set or providing one implicit
 `as` operation for testing, conversion, and name introduction. Either admits surprising
 conversions: an `int` case could consume a `double` alternative before the
-later `double` case. R6 uses source-ordered first match and exact-match
-declaration conversions. Usefulness analysis diagnoses a dominated case.
+later `double` case. This revision uses source-ordered first match and the
+restricted declaration relationship described above. Usefulness analysis
+diagnoses a dominated case.
 
 ### Polymorphic Cast Syntax
 
