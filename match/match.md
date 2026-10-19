@@ -173,6 +173,66 @@ spellings rather than mechanical source transformations.
     > ----  --- --- --- ----
     >  13    9   2   1   0
 
+# Draft Notes {- .collapsed}
+
+These are working notes for R7 and are not part of the proposal.
+
+- Clarify fixed decomposition pattern packs. `[Types...]` expands to
+  omitted-name declaration patterns, while `[Types ...values]` is ill-formed
+  because a fixed declaration pattern pack cannot introduce one shared name.
+- Update the standard-specialization table to use the state names `null` and
+  `value` for pointers, smart pointers, and `optional`. The open protocol keeps
+  the positive `has_value` operation; the `empty` member of closed
+  `alternative_info` is unchanged.
+- State that a `goto` cannot enter a statement controlled by a pattern
+  condition and bypass the initialization of its pattern names. Match handlers
+  already have the corresponding protected-entry rule.
+- Resolve whether matching conditions in different source cases have a
+  specified evaluation order.
+- Audit the R6-to-R7 revision history once the R7 design is settled.
+- Remove the temporary review-boundary horizontal rule before publishing R7.
+- Continue to omit match init-statements and block-scope pattern declarations
+  from R7. They are implemented as prototype extensions but are not currently
+  part of this proposal.
+- Decide whether unavailable and `[[maybe_unused]]` enumerators remain required
+  for exhaustiveness. Distinct enumerator values are required and unnamed
+  values in the enum's range are residual, but these attributes still need an
+  explicit policy.
+- Specify a stable conservative boundary for usefulness diagnostics over
+  dependent and opaque patterns. Also establish implementation expectations
+  for the exponential worst case of Maranget-style usefulness checking,
+  including stress coverage and a controlled complexity limit or diagnostic.
+- Define a candidate domain for case-local instantiation. It is a conservative
+  upper bound that retains the alternative state and structural path leading
+  to one candidate while treating constraints not needed to identify that
+  candidate as wildcards. Candidate domains are not necessarily types: they
+  can distinguish repeated alternatives of the same type, empty states, and
+  paths through products and nested alternatives. If cumulative coverage makes
+  a candidate domain useless, no refinement of that candidate can be useful;
+  otherwise, specialization and precise usefulness checking are still needed.
+- Expand [Implementation Experience] with the Clang/LLVM migration experience
+  and representative real examples from Clang/LLVM and Chromium.
+- Add representative `alternative_traits` opt-ins from Folly, LLVM, and
+  Thrift to [Implementation Experience], showing how existing types can
+  participate in pattern matching.
+- Clarify which library components are proposed and how they relate to the
+  language facility, including [Standard Specializations].
+- Address the concerns raised by P3619R1 in [Design Decisions and Alternatives
+  Considered].
+- Review the contexts that support patterns in [Pattern Matching Constructs],
+  using Rust as a baseline, and explain the intentional omissions.
+- Complete the `alternative_traits` contract: lookup, header availability, a
+  feature-test macro, malformed-specialization diagnostics, practical limits
+  on the extent of `alternatives`, defaults for omitted members, discriminator
+  mapping, exception and cv/ref requirements,
+  open-carrier lifetime and stability, and behavior after subject mutation.
+- Re-audit prototype support for PCH and module serialization, complete CFG
+  effects and cleanup, the experimental bytecode interpreter, AST import,
+  indexing, clangd, refactoring, libclang, expression mangling, source-versus-
+  semantic AST views, hostile protocol specializations, and large closed
+  products. Unsupported paths should diagnose or preserve a valid opaque AST
+  rather than erase syntax or crash.
+
 # Introduction
 
 This paper proposes pattern matching for C++29. It is the next
@@ -1159,8 +1219,6 @@ match(value, case T * x) // declaration pattern if T names a type
 match(value, case a) * b // multiplication outside the test
 ```
 
----
-
 # Patterns
 
 ## Wildcard Pattern
@@ -1994,6 +2052,8 @@ match (value) {
   `false`.
 - `{ auto&& value }` and `{ _ }` are ill-formed because there is no C++ type
   for a generic projection of the open remainder.
+
+---
 
 # The `alternative_traits` Protocol
 
