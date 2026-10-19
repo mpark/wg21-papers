@@ -1238,15 +1238,74 @@ The choice of `_` is discussed in [Wildcard and Value Patterns].
 > | `$inclusive-or-expression$`
 
 An expression pattern `E` has to be constant: a literal, `constexpr` variable,
-enumerator, function name, or `constexpr` function object, for example. Its
-value is not recomputed each time the case is attempted. Matching proceeds as
-follows:
+enumerator, function name, or `constexpr` function object, for example.
+Matching proceeds as follows:
 
 1. If `std::alternative_traits` advertises `E` as a state, test its
    discriminator.
-2. Otherwise, if `bool($subject$ == E)` is well-formed, use that comparison.
-3. Otherwise, if `bool(E($subject$))` is well-formed, invoke `E` as a predicate.
-4. Otherwise, the pattern is not viable.
+2. Otherwise, if the subject and `E` have integral or enumeration types,
+   apply the operand compatibility rules of the built-in three-way comparison.
+   If those rules accept the operands, compare the converted operands with
+   built-in equality. Otherwise, the pattern is not viable.
+3. Otherwise, if `bool($subject$ == E)` is well-formed, use that comparison.
+4. Otherwise, if `bool((E)($subject$))` is well-formed, invoke `E` as a
+   predicate. The parenthesized callee suppresses argument-dependent lookup.
+5. Otherwise, the pattern is not viable.
+
+The second step reuses the relevant built-in `<=>` rules. It does not evaluate
+an ordering operation or consider a user-defined `operator<=>`. It rejects a
+comparison between `bool` and any other integral type, as well as narrowing
+conversions. For example, `true` and `false` match only the `bool` alternative,
+not nonzero and zero values of the `int` alternative:
+
+```cpp
+using value = std::variant<bool, int, std::string>;
+
+int classify(const value& subject) {
+  return match (subject) {
+    case { true }                => 0;
+    case { false }               => 1;
+    case { int number }          => number;
+    case { const std::string& }  => 2;
+  };
+}
+```
+
+As with `switch`, this structural treatment is limited to integral and
+enumeration types. Floating-point patterns instead use ordinary equality in
+the third step.
+
+Enumeration constants are structural in the same sense as `switch` labels.
+Matching them uses built-in equality and does not call an overloaded
+`operator==`:
+
+```cpp
+enum mode { read, write };
+
+bool operator==(mode, mode); // not used by the structural cases
+
+int classify(mode current) {
+  return match (current) {
+    case read  => 0;
+    case write => 1;
+  };
+}
+```
+
+Unlike `switch`, an enumeration subject does not make an integer expression a
+structural label: even for an unscoped enumeration, `case 1` is not viable. The
+pattern must name an enumerator or explicitly produce a value of the enumeration
+type.
+
+A guard requests ordinary C++ equality, including a user-defined operation,
+explicitly:
+
+```cpp
+match (current) {
+  case mode value if (value == read) => selected();
+  case _                             => other();
+}
+```
 
 Equality has priority over invocation, so an ordinarily comparable constant
 remains a value pattern even if its type also has a call operator.
@@ -3169,12 +3228,13 @@ name from a declaration that introduces a new one. This paper does not make a
 bare identifier introduce a name. Expressions and declarations keep their
 ordinary C++ meaning.
 
-Expression patterns also provide a constrained predicate facility. We try
-equality first and invoke the pattern only when equality is unavailable.
-This ordering matters because generic call operators are frequently
-unconstrained: an invocation expression can appear well-formed even when
-instantiating its body would fail. It also ensures that adding callability to
-an equality-comparable value does not change the meaning of existing patterns.
+Expression patterns also provide a constrained predicate facility. Advertised
+states and structural integral or enumeration values are handled first. For
+other values, we try equality before invoking the pattern. This ordering matters
+because generic call operators are frequently unconstrained: an invocation
+expression can appear well-formed even when instantiating its body would fail.
+It also ensures that adding callability to an equality-comparable value does not
+change the meaning of existing patterns.
 
 Both operations are meaningful for a few types. For example,
 `reference_wrapper<F>` can compare with `F` and invoke `F`. Such a pattern uses
