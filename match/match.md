@@ -3745,6 +3745,25 @@ match (values...) {
 }
 ```
 
+In particular, a one-element expansion does not collapse to direct matching.
+The extra decomposition level remains visible:
+
+```cpp
+constexpr int classify(auto... values) {
+  return match (values...) {
+    case [1, 1]   => 0; // two subjects
+    case [[1, 1]] => 1; // one subject that is a two-element product
+    case _        => 2;
+  };
+}
+
+static_assert(classify(1, 1) == 0);
+static_assert(classify(std::pair(1, 1)) == 1);
+```
+
+This preserves arity matching for every pack size: `[]`, `[_]`, and `[_, _]`
+continue to distinguish zero, one, and two subjects.
+
 An ordinary comma expression remains one subject when parenthesized:
 
 ```cpp
