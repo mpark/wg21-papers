@@ -3832,7 +3832,9 @@ We have implemented the proposal in Clang. The implementation is available at
   type selectors, and parameterized selectors such as variant's `.index<I>`.
 - Dependent semantic case instantiation, including case-local packs and
   alternative-dependent types.
-- Constant evaluation and runtime code generation.
+- Constant evaluation and runtime code generation, including decision-tree
+  planning for nested patterns and coalesced switch dispatch for suitable
+  closed discriminators and built-in integral value patterns.
 - Subject evaluation and lifetime extension.
 - Multiple-subject products, including dependent packs and preservation of
   each subject's value category.
@@ -3906,29 +3908,60 @@ as described in [Case-Local Instantiation]. One analysis determines which case
 instantiations are needed, reports redundant cases, and checks final
 exhaustiveness.
 
-### Lowering Alternative Dispatch
+### Decision-Tree Lowering
 
-At `-O2`, direct matches already become switches, merged destinations, or a
-single direct call when the discriminator is known. Unlike `std::visit`, the
-language form has no library abstraction barrier that makes this depend on
-inlining a visitor implementation.
+Runtime code generation separates planning from emission. After semantic
+analysis produces the case instantiations, `MatchDecisionTree` represents
+their remaining tests as rows and columns. For example, consider two integer
+subjects:
 
-Ultimately, the frontend should preserve an alternative-dispatch operation
-containing the discriminator, projections whose state has already been
-selected, guards, handlers, and exhaustiveness information. A later lowering
-can choose:
+```cpp
+match (first, second) {
+  case [1, _] => one();
+  case [_, 2] => two();
+  case [_, _] => other();
+}
+```
 
-| Situation | Possible lowering |
+Each case contributes a row, and each subject has a column:
+
+| Case | `first` | `second` |
+|------|---------|----------|
+| `one()` | `1` | No test |
+| `two()` | No test | `2` |
+| `other()` | No test | No test |
+
+The wildcard contributes no test. The planner keeps rows in source order and
+stores only columns that have tests. Decomposition exposes columns for its
+components, and a successful alternative test exposes columns for the selected
+payload.
+
+The planner considers branchable columns in the first remaining row. It follows
+the first-clause strategy and greedy approach to limiting duplication described
+by [Jules Jacobs](https://julesjacobs.com/notes/patternmatching/patternmatching.pdf).
+The prototype uses the heuristic from [Yorick Peterse's
+implementation](https://gitlab.com/yorickpeterse/pattern-matching-in-rust/-/tree/main/jacobs2021):
+choose the first-row column whose subject is tested most frequently across the
+remaining rows.
+
+The emitter currently handles the resulting plan as follows:
+
+| Planned operation | Current lowering |
 |---|---|
-| Constant discriminator | Emit only the selected alternative |
-| Small dispatch | Direct switch or branch tree |
-| Cases sharing behavior | Merge destinations |
-| Skewed profile | Hot direct cases plus cold fallback |
-| Large unpredictable dispatch | Jump table or outlined thunk matrix |
-| Multiple alternative subjects | Decision DAG; flatten only profitable products |
+| Closed alternatives on one discriminator | One cached discriminator, with consecutive tests coalesced into a switch for integral or enumeration discriminator types |
+| Compatible consecutive built-in integral values on one subject | A coalesced switch when the ordinary comparison conversions agree |
+| Open projections, type tests, and polymorphic casts | Shared binary tests with projection materialized only on success |
+| Nested decomposition and multiple subjects | Recursive tests on structural subject paths |
+| Compatible unguarded case instantiations | A shared handler, with same-typed reference bindings merged by PHIs |
+| Remaining tests and declarations | Ordered candidate emission |
 
-The prototype currently lowers through ordinary branches and relies on LLVM
-optimization. A dedicated decision-DAG lowering is future work.
+Guard evaluation and reuse follow [Pattern Tests and Declarations] and
+[Projection Reuse]. The frontend emits the dispatch directly,
+rather than obtaining it by inlining `std::visit`. Library-defined
+discriminators and projections can still require inlining for efficient code.
+
+The prototype builds a tree, not a fully shared DAG. Rows that do not test the
+selected subject can occur in both subtrees, so some tests may be duplicated.
 
 ### Dynamic Class Matching
 
