@@ -20,6 +20,9 @@ highlighting:
     initialization. Non-reference declarations admit same-type, base-class,
     and restricted pointer relationships; reference declarations require a
     reference-compatible subject.
+  - Match cases retain source-order priority, but matching operations may be
+    reordered and equivalent occurrences may be coalesced. Their results may
+    be retained across guard evaluation.
 
 ## R5 → R6 {- .unlisted #r5-to-r6}
   - Prior to the Hagenberg meeting in January 2025, further implementation
@@ -193,8 +196,6 @@ These are working notes for R7 and are not part of the proposal.
 - State that a `goto` cannot enter a statement controlled by a pattern
   condition and bypass the initialization of its pattern names. Match handlers
   already have the corresponding protected-entry rule.
-- Resolve whether matching conditions in different source cases have a
-  specified evaluation order.
 - Audit the R6-to-R7 revision history once the R7 design is settled.
 - Remove the temporary review-boundary horizontal rule before publishing R7.
 - Continue to omit match init-statements and block-scope pattern declarations
@@ -222,8 +223,7 @@ These are working notes for R7 and are not part of the proposal.
 - Complete the `alternative_traits` contract: lookup, header availability, a
   feature-test macro, malformed-specialization diagnostics, practical limits
   on the extent of `alternatives`, defaults for omitted members, discriminator
-  mapping, exception and cv/ref requirements,
-  open-carrier lifetime and stability, and behavior after subject mutation.
+  mapping, and exception and cv/ref requirements.
 - Re-audit prototype support for PCH and module serialization, complete CFG
   effects and cleanup, the experimental bytecode interpreter, AST import,
   indexing, clangd, refactoring, libclang, expression mangling, source-versus-
@@ -1656,6 +1656,9 @@ match (point) {
 }
 ```
 
+A decomposition pattern does not impose an evaluation order between its nested
+patterns. For `[1, 2]`, either nested pattern may be tested first.
+
 Elements are forwarded as the current subjects of their nested patterns with
 the correct cv-qualifications and value categories. This is discussed further
 in [Decomposition and Forwarding].
@@ -2196,6 +2199,11 @@ the same protocol for open alternative types such as `any`. The name
 `alternative_traits`, as well as some of its member names, remains open to
 change.
 
+The protocol functions and the applicability tests and projections obtained
+from open-protocol result objects are user-provided matching operations under
+[Matching Operation Order and Reuse]. Its validity requirements apply to every
+specialization.
+
 ## Closed Indexed Protocol
 
 A complete closed customization for the expected-like `my::Result<T, E>`
@@ -2295,18 +2303,16 @@ declaration type in the second. For example, `any` can reject the selector
 The result must be contextually convertible to `bool` and dereferenceable. It
 is materialized once and tested as an lvalue. A false result is a non-match;
 otherwise the result is dereferenced with the value category of the original
-call expression and the projection is matched. This permits a carrier to
-preserve the subject's cv-qualification and value category.
+call expression and the projection is matched. This permits the result object
+to preserve the subject's cv-qualification and value category.
 
 No overlap is inferred between `try_cast<T>` and `try_init<T>`. They are
 separate open views unless the specialization gives them equivalent behavior.
-Repeated uses of the same operation and type can still share one materialized
-result.
 
 An open specialization can additionally provide `has_value(subject)`. If
 present, `{}` calls that operation and matches when its result is contextually
 false. The empty state is distinct from every successful `try_cast` and
-`try_init`. Repeated empty tests can share one result.
+`try_init`.
 
 An open alternative type has no generic projection because it cannot give the unknown
 remainder one static type. Consequently generic non-declaration `{ P }`, named
@@ -2315,7 +2321,7 @@ specialization omits `has_value`. A top-level `_` handles all values not
 recognized by preceding typed projections. It remains necessary for
 exhaustiveness even when `has_value` is present.
 
-For `any`, both operations can share a small carrier:
+For `any`, both operations can use the same small result type:
 
 ```cpp
 template <>
@@ -2864,20 +2870,22 @@ A match case does not introduce a function-return boundary. A selected
 reference result is diagnosed according to how the complete match selection
 expression is used.
 
-## Pattern Tests and Declarations
+## Match Case Semantics
 
-Cases are attempted in source order. Within one attempted case:
+Match cases have source-order priority. The selected case is the first one whose
+complete pattern matches and whose guard, if present, evaluates to `true`.
 
-1. Refutable child tests run in source order with short-circuiting.
-2. After the complete pattern succeeds, named declarations initialize in
-   source order.
-3. The guard init-statement and condition are evaluated.
-4. On success, the handler is evaluated.
-5. On guard failure, case-local declarations are destroyed and matching
-   continues.
+Once a case's pattern matches:
 
-This prevents an early by-value declaration from moving out of the subject
-before a later child establishes that the complete pattern matches:
+1. Named declarations initialize in source order.
+2. The guard *init-statement* and *condition* are evaluated.
+3. On success, the handler is evaluated.
+4. On guard failure, case-local declarations are destroyed and matching
+   continues with later cases.
+
+Delaying declaration initialization until the complete pattern matches
+prevents an early by-value declaration from moving out of the subject before a
+later nested pattern succeeds:
 
 ```cpp
 match (std::move(subject)) {
@@ -2914,37 +2922,79 @@ unguarded cases, where successful pattern selection cannot continue to a later
 case. An omitted-name declaration pattern has no initialization and is
 therefore not subject to the guarded-move restriction.
 
-## Projection Reuse
+## Matching Operation Order and Reuse
 
-We do not want the abstract machine to require repeated discrimination and
-projection. An implementation can retain or recompute equivalent operations
-within one match, including:
+Source-order case priority does not prescribe one sequence of matching
+operations. Their relative order is unspecified except where a pattern imposes
+an order. Applicability precedes projection, which precedes matching the
+projection against a nested pattern.
+
+The following matching operations can be shared:
 
 - closed alternative discriminators and selected projections;
 - tuple-like `get<I>`;
-- materialized open alternative `try_cast<T>` and `try_init<T>` results;
-- runtime-checked polymorphic casts and their adjusted pointers.
+- open alternative calls, applicability tests, and successful projections;
+- runtime-checked polymorphic casts and their adjusted pointers;
+- built-in comparisons used by value patterns that require no user-defined
+  conversion.
 
-Expression comparisons for unadvertised values, declaration initializations,
-and guards are still evaluated at each source occurrence. Advertised value
-patterns are discriminator tests, so they participate in the same
-discriminator reuse as braced alternative patterns. Operations used only by a
-later case cannot be evaluated before that case is reached.
+Two occurrences are equivalent when they apply the same operation, including
+the same state or type arguments, to the same subject or retained projection.
+An implementation can evaluate them separately or reuse one occurrence's
+materialized result for others.
 
-A failed guard does not require the implementation to throw away a saved
-projection. If a guard modifies the subject, a later projection can be reused
-or recomputed. Code that invalidates a saved reference has the usual C++
-consequences.
+As with copy elision in [class.copy.elision], reuse is permitted even when
+omitting another evaluation changes observable side effects. When its result
+is not shared, a source occurrence is evaluated at most once.
 
-We require `index(subject)` for a closed specialization to be `noexcept`. This
-lets an implementation save the discriminator and lower the match to a switch
-or decision tree. We do not specify the lowering.
+User-provided matching operations must remain valid when their source
+occurrences are evaluated separately. In particular, evaluating an operation
+cannot consume state needed by a later occurrence. Such operations can
+otherwise have side effects. Within the bounds above, the number of their
+evaluations is unspecified.
+
+A retained materialized result remains alive through its last use. This does
+not extend the lifetime of an object to which the result refers.
+
+Distinct built-in value comparisons on one subject can be combined into one
+multiway test even though they are not equivalent occurrences.
+
+A matching operation for a later case can be performed before an earlier
+case's guard. For example:
+
+```cpp
+void guard_side_effect(int value) {
+  auto bad_guard = [&value] { value = 3; return false; };
+  match (value) {
+    case 1 => one();
+    case 2 if (bad_guard()) => two();
+    case 3 => three();
+    case _ => other();
+  }
+}
+```
+
+If `value` is initially `2`, an implementation may first use a `switch` to
+dispatch among `1`, `2`, and `3`, and then evaluate `bad_guard`. The assignment
+to `3` does not revise that earlier dispatch, so this evaluation calls
+`other()`. Another permitted evaluation tests the pattern `3` after the guard
+and calls `three()`. Either handler may therefore be called when a guard
+modifies data examined by a later pattern.
+
+Predicate invocations and value comparisons that call a user-defined operator
+or conversion function are not shareable. Each source occurrence is evaluated
+separately when its case is considered. Named declaration initializations and
+guards occur once, and only after their case's complete pattern matches.
+
+A failed guard does not require discarding a retained result or repeating a
+matching operation. If user code invalidates an object referred to by a
+retained projection, using that projection later has the usual C++ consequences.
 
 ## `match constexpr`
 
-`match constexpr` requires the selected pattern tests and guards to be constant
-expressions. Like `if constexpr`, it discards the unselected handlers. It does
-not make an invalid pattern into a failed match.
+`match constexpr` requires the operations and guards used to select a case to
+be constant expressions. Like `if constexpr`, it discards the unselected
+handlers. It does not make an invalid pattern into a failed match.
 
 ```cpp
 template <Format format>
@@ -4020,8 +4070,8 @@ The emitter currently handles the resulting plan as follows:
 | Compatible unguarded case instantiations | A shared handler, with same-typed reference bindings merged by PHIs |
 | Remaining tests and declarations | Ordered candidate emission |
 
-Guard evaluation and reuse follow [Pattern Tests and Declarations] and
-[Projection Reuse]. The frontend emits the dispatch directly,
+Guard evaluation and reuse follow [Match Case Semantics] and
+[Matching Operation Order and Reuse]. The frontend emits the dispatch directly,
 rather than obtaining it by inlining `std::visit`. Library-defined
 discriminators and projections can still require inlining for efficient code.
 
@@ -4030,11 +4080,12 @@ selected subject can occur in both subtrees, so some tests may be duplicated.
 
 ### Dynamic Class Matching
 
-Polymorphic declaration patterns must retain the semantics of an ordered
-sequence of `dynamic_cast` operations, including open-world derived classes
-and pointer adjustment. The compiler can still reuse repeated targets, derive
-a base match from a successful more-derived match, use final-class fast paths,
-and employ LTO or profile-guided caches while preserving those semantics.
+Polymorphic declaration patterns use the `dynamic_cast` semantics described in
+[Static Matching and Runtime Polymorphic Casts], including open-world derived
+classes and pointer adjustment. Reuse follows [Matching Operation Order and
+Reuse]. The compiler can reuse repeated targets, derive a base match from a
+successful more-derived match, use final-class fast paths, and employ LTO or
+profile-guided caches while preserving those semantics.
 
 ### Caching Discriminators and Projections
 
