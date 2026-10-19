@@ -2829,6 +2829,45 @@ The corresponding single-pattern Boolean test is
 `match(E1, E2, case P)`. It uses the same subject and pattern rules as a
 match selection and does not introduce a separate `is` expression.
 
+### Why not `switch`?
+
+A viable alternative would extend `switch` with pattern cases rather than add
+a new `match` construct:
+
+```cpp {.not_proposed}
+switch (result) {
+  case { int value } => use(value);
+  case { std::string error } => report(error);
+}
+```
+
+This would not be a small generalization of existing case labels. A `switch`
+is a statement whose condition is converted to an integral or enumeration
+type, including the promotions required by `switch`. Its cases are
+control-flow labels. They can be stacked, execution can fall through, and an
+unlabelled `break` targets the `switch`. A `switch` need not be exhaustive.
+Existing programs depend on these properties.
+
+A match selection can be a statement or expression and does not require its
+subject to be converted to an integral type. Pattern declarations initialize
+only after their patterns match. Handlers do not fall through, and jumps
+cannot enter a handler without matching its pattern. A match selection must
+be exhaustive, and its cases must be useful.
+
+An arrow form could select the new semantics and prohibit mixing with old
+case labels. That would keep existing code working, but `switch` would then
+have two meanings. The reader would need to inspect the body to know which
+one is being used. A separate `match` introducer makes the distinction apparent
+at the start and leaves existing `switch` semantics unchanged.
+
+Multiple subjects provide a separate compatibility problem. `switch (a, b)`
+already contains a comma expression and switches on `b`. Reinterpreting it as
+a product of two subjects would change existing programs. `match (a, b)` has
+that meaning without ambiguity.
+
+`switch` remains the appropriate construct for its existing use cases. An
+implementation is free to lower suitable value patterns to a `switch`.
+
 ## Handler and Case Syntax
 
 ### Statement Handlers
