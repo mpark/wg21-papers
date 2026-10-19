@@ -208,14 +208,6 @@ These are working notes for R7 and are not part of the proposal.
   dependent and opaque patterns. Also establish implementation expectations
   for the exponential worst case of Maranget-style usefulness checking,
   including stress coverage and a controlled complexity limit or diagnostic.
-- Define a candidate domain for case-local instantiation. It is a conservative
-  upper bound that retains the alternative state and structural path leading
-  to one candidate while treating constraints not needed to identify that
-  candidate as wildcards. Candidate domains are not necessarily types: they
-  can distinguish repeated alternatives of the same type, empty states, and
-  paths through products and nested alternatives. If cumulative coverage makes
-  a candidate domain useless, no refinement of that candidate can be useful;
-  otherwise, specialization and precise usefulness checking are still needed.
 - Expand [Implementation Experience] with the Clang/LLVM migration experience
   and representative real examples from Clang/LLVM and Chromium.
 - Add representative `alternative_traits` opt-ins from Folly, LLVM, and
@@ -1517,8 +1509,8 @@ For an ordinary `variant<T>`, projecting from `std::move(value)` produces
 `T&&`. The `T&` declaration is not applicable, so its case is omitted for that
 specialization and the wildcard is selected.
 
-Only (1) can discard a case in a dependent match. For (3), the declaration is
-applicable but its initialization is an error:
+Unless an instantiation is skipped by the coverage rules in
+[Case-Local Instantiation], (3) is an error rather than a failed match:
 
 ```cpp
 struct Job {
@@ -1558,8 +1550,8 @@ case [auto&&, auto&&]
 
 Because the initialization is not evaluated, no object is created or
 destroyed, the subject cannot be moved from, and the hypothetical operation
-does not contribute to the exception specification. An invalid initialization
-is nevertheless a hard error rather than a failed match.
+does not contribute to the exception specification. Invalid initializations
+are diagnosed as described in [Applicability Versus Failed Initialization].
 
 `void` and cv-`void` are explicitly supported. This matters for dependent
 `void` expressions and `expected<void, E>` projections.
@@ -2638,6 +2630,10 @@ classify(optional<int>{42});     // 2
 classify(optional<int&>{value}); // 1
 ```
 
+This permissiveness is specific to dependent matching. In the corresponding
+non-dependent match on an rvalue `optional<int>`, `{ int& }` cannot match any
+projectable state and is diagnosed even when a later wildcard is present.
+
 Some dependent patterns are nevertheless provably useless. A built-in array
 has a fixed, non-customizable decomposition arity:
 
@@ -2682,8 +2678,7 @@ case instantiation context. Each instantiation separately handles result
 deduction, `decltype`, constraints, local statics, diagnostics, and
 structured-binding packs.
 
-An earlier unguarded irrefutable semantic case closes only its own domain and
-prevents later handlers for that domain from being instantiated:
+An earlier case can determine which later case instantiations are needed:
 
 ```cpp
 variant<int, string, vector<int>> value;
@@ -2698,10 +2693,41 @@ The second handler is instantiated for `string` and `vector<int>`, not for
 `int`. This gives us the useful instantiation behavior of an overloaded visitor
 without turning the cases into an overload set.
 
-Whether a handler is instantiated depends on earlier individual irrefutable
-cases, not on a combination of several refutable cases. Usefulness can still
-diagnose the later case as redundant, but it does not retroactively suppress
-that handler's instantiation.
+Coverage is cumulative. Several refutable patterns can together make a later
+case instantiation useless:
+
+```cpp
+variant<bool, string> value;
+
+auto result = match (value) {
+  case { true }        => 1;
+  case { false }       => 0;
+  case { auto&& data } => static_cast<int>(data.size());
+};
+```
+
+The third handler is instantiated for `string`, but not for `bool`. The first
+two patterns together cover the `bool` alternative.
+
+We also check coverage before specializing a candidate's pattern, since
+specialization itself can be ill-formed.
+
+A *candidate domain* is a conservative upper bound on the values represented
+by one potential case instantiation before its pattern is specialized. It
+retains the alternative state and structural path that identify the candidate,
+while treating pattern constraints not needed to identify it as wildcards. It
+is not necessarily a type. Candidate domains distinguish repeated alternatives
+of the same type, empty states, and paths through products and nested
+alternatives.
+
+If the preceding unguarded patterns cover the entire candidate domain, its
+pattern is not specialized, and its guard and handler are not instantiated.
+Otherwise, the pattern is specialized and then checked for usefulness before
+its guard and handler are instantiated. A case instantiation that is not
+useful does not instantiate its guard or handler.
+
+A guarded case does not contribute coverage because its guard can fail. If
+usefulness cannot be determined, the guard and handler are instantiated.
 
 # Exhaustiveness and Usefulness
 
@@ -2730,9 +2756,6 @@ can fail.
 C++ pattern matching. This proposal extends the model to account for required
 usefulness, introducing `std::alternative_traits` which integrates with
 the exhaustiveness algorithm, and the implementation work in the prototype.
-The prototype uses an adapted Maranget/Rust pattern-matrix algorithm.
-The standard should specify the observable behavior rather than refer to one
-implementation algorithm.
 
 ## Required and Residual Domains
 
@@ -3870,6 +3893,18 @@ category. That is sufficient for experimentation, but a production
 implementation should use a durable AST representation or marker. The current
 registry is not suitable for serialization, module import, or AST cloning in a
 different semantic context.
+
+### Exhaustiveness Checking
+
+The prototype's coverage analysis uses an adapted Maranget/Rust
+pattern-matrix algorithm. This analysis is separate from runtime decision-tree
+lowering. The standard should specify the observable behavior rather than
+refer to either implementation algorithm.
+
+The same matrix is built incrementally during dependent case instantiation,
+as described in [Case-Local Instantiation]. One analysis determines which case
+instantiations are needed, reports redundant cases, and checks final
+exhaustiveness.
 
 ### Lowering Alternative Dispatch
 
