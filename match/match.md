@@ -1,6 +1,6 @@
 ---
 title: "Pattern Matching with `match` and `case`"
-document: P2688R6
+document: D2688R7
 date: today
 audience: Evolution
 author:
