@@ -3182,10 +3182,23 @@ removed if that proposal is adopted for C++29.
 ### Case Introducers
 
 R5 allowed a pattern to begin a case directly. We now require `case`. It gives
-the parser a reliable recovery point, distinguishes case attributes from
-declaration-pattern attributes, and makes empty and statement handlers easier
-to parse. It also leaves more room to extend the pattern grammar later.
+the parser a reliable recovery point and makes empty and statement handlers
+easier to parse. It also leaves more room to extend the pattern grammar later.
 
+The introducer separates attributes on a match case from attributes on a
+declaration pattern:
+
+```cpp
+[[likely]] case [[maybe_unused]] int value => use(value);
+```
+
+It also makes the beginning of each case easy to find in a larger selection
+and gives the feature one repeated form: `case P` appears in match selections,
+single-pattern tests, and pattern conditions.
+
+The introducer also helps distinguish a match selection from an ordinary
+declaration such as `match (value) { 0 };`. [Contextual Parsing of `match`]
+discusses this ambiguity and the corresponding codebase survey.
 
 ### The `=>` Separator
 
