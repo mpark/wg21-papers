@@ -1392,14 +1392,35 @@ same pattern is ill-formed. Pattern names are results of a successful match and
 are available to its guard and handler; they are not inputs to other parts of
 the pattern.
 
-Declaration patterns generally use the ordinary declaration-versus-expression
-disambiguation. The exception is that a parenthesized declarator is accepted
-only when an array or function suffix makes the parentheses structurally
-meaningful. Thus `T(value)`, `bool(value)`, and `auto(value)` are expression
-patterns, while `int (*function)()` remains a declaration pattern. The grammar
-also admits structured-binding declarations, but not storage-class forms such
-as `static` and `thread_local`. The disambiguation is discussed further in
+Declaration patterns use ordinary declarator forms, with one rule preserving
+functional casts as expression patterns. If the outer $noptr-declarator$ is a
+terminal `( $ptr-declarator$ )`, the result is an expression pattern. An outer
+function or array suffix instead makes it declaration syntax. Parentheses
+within the enclosed $ptr-declarator$ are handled recursively:
+
+```cpp
+case T(value)          // expression pattern
+case auto((value))     // expression pattern
+case T* value          // declaration pattern
+case R (*function)()   // declaration pattern
+case R ((*function))() // declaration pattern
+case T (&array)[N]     // declaration pattern
+```
+
+If both interpretations remain possible, declaration-pattern syntax takes
+precedence. A functional cast such as `auto(R(*function)())` forces the
+expression interpretation.
+
+The resulting declaration must declare a variable. For example,
+`T(function)()` has declaration syntax but is ill-formed because it declares a
+function. The grammar also admits structured-binding declarations, but not
+storage-class forms such as `static` and `thread_local`. The disambiguation is
+discussed further in
 [Declaration-Pattern Syntax](#declaration-pattern-syntax).
+
+At the start of a pattern, `[[` is interpreted as an attribute only when a
+complete attribute can continue a declaration pattern. Otherwise, it begins
+a nested decomposition pattern.
 
 ### Static Declaration Matching
 
@@ -3337,31 +3358,24 @@ This comes with more rules. We have to specify copying, moving, reference
 binding, deleted constructors, explicit constructors, and conversions. I
 believe that is better than introducing a second declaration language for C++.
 
-The chosen syntax resolves the common declaration/expression overlap without
-another priority rule. `T(x)`, `T()`, `bool(x)`, and `auto(x)` cannot complete
-as declaration patterns because terminal parenthesized declarators and
-prefixless abstract function declarators are excluded. They therefore retain
-their ordinary expression meaning. Parentheses are admitted where an array or
-function suffix makes them structurally significant, as in `T (&array)[N]`
-and `R (*function)()`. In the remaining genuine overlap, declaration-pattern
-syntax wins; `auto(R(*function)())` forces the expression interpretation. This
-reaches the same result as the *nofun-type-id* direction in CWG issue 2228 for
-`(T())`, while still allowing `(T value)` to group a declaration pattern.
+### Declaration Syntax
 
-A named declaration must still declare a variable; `int function()` parses as
-a declaration pattern but is ill-formed. If an expression has declaration
-shape, a placeholder functional cast remains an explicit escape:
+The disambiguation in [Declaration Patterns] preserves familiar functional
+casts such as `T(x)`, `T()`, `bool(x)`, and `auto(x)` without excluding
+array-reference and function-pointer declarations. It reaches the same result
+as the *nofun-type-id* direction in CWG issue 2228 for `(T())`, while still
+allowing `(T value)` to group a declaration pattern.
+
+A placeholder functional cast supplies an explicit escape where declaration
+syntax would otherwise win:
 
 ```cpp
 case R(*function)()        // declaration pattern
 case auto(R(*function)())  // expression pattern
 ```
 
-The only localized parsing overlap is `[[`, which can begin either an
-attribute or a nested decomposition. The parser accepts the attribute
-interpretation only when a complete attribute can continue the surrounding
-declaration. Storage-class forms such as `static` and `thread_local` are not
-permitted.
+The `[[` ambiguity also occurs between attributes and nested structured
+bindings. [Declaration Patterns] describes how it is resolved for patterns.
 
 This requires answering a few questions that `let` avoided.
 
@@ -3812,12 +3826,13 @@ We have implemented the proposal in Clang. The implementation is available at
 
 ### Parsing Selections and Patterns
 
-The prototype uses one tentative classifier for the prefix `match` form. It
-scans the balanced subject list, uses Clang's existing tentative declarator and
-type-id facilities only in the ambiguous cases, restores the parser, and then
-runs either the ordinary parser or the match-selection parser normally. Diagnostic
-recovery can recognize additional ill-formed match-shaped input without
-changing the classification of valid programs.
+The prototype implements [Contextual Parsing of `match`] with
+`isPrefixMatchSelection`. It scans the balanced subject list, uses Clang's
+existing tentative declarator and type-id facilities only in the ambiguous
+cases, restores the parser, and then runs either the ordinary parser or the
+match-selection parser normally. Diagnostic recovery can recognize additional
+ill-formed match-shaped input without changing the classification of valid
+programs.
 
 The token following the subject can be arbitrarily far from `match`. C++
 already requires this kind of decision for declarations and expressions:
@@ -3827,27 +3842,17 @@ T (*****x) = y;   // declaration
 T (*****x) == y;  // expression
 ```
 
-The prototype scans the balanced subject before performing the selected real
-parse. A production parser can avoid repeated work in deeply nested cases by
-caching matching delimiters. For malformed programs, the implementation can
-run the real trailing-return-type parser tentatively, including normal
-recovery and typo correction, and then rewind to issue a match-specific
-diagnostic. Similarly, a top-level `=>` in a declaration-shaped body can
-support a focused missing-`case` diagnostic without changing the grammatical
-classification.
+A production parser can avoid repeated work in deeply nested cases by caching
+matching delimiters. For malformed programs, the implementation can run the
+real trailing-return-type parser tentatively, including normal recovery and
+typo correction, and then rewind to issue a match-specific diagnostic.
+Similarly, a top-level `=>` in a declaration-shaped body can support a focused
+missing-`case` diagnostic without changing the grammatical classification.
 
-For a single-pattern test, a top-level comma followed by `case` identifies the
-pattern boundary. Nested delimiters are skipped. No binary-operator precedence
-or infix parser hook is involved.
-
-Pattern-specific introducers commit directly to pattern parsing. Declarations
-use a *type-specifier-seq* and a restricted ordinary declarator. When a
-parenthesized declarator follows the type, the classifier checks for a
-pointer, reference, or member-pointer declarator followed by an array or
-function suffix. The selected declaration is then parsed by the ordinary
-declarator parser. The only other localized probe is for `[[`, which can begin
-either an attribute or a nested decomposition; ordinary nested structured
-bindings use the same probe.
+Declaration patterns use `TryParseDeclarationPatternSyntax` for the
+disambiguation described in [Declaration Patterns], then the ordinary
+declarator parser. The `[[` probe is shared with nested structured-binding
+parsing.
 
 ### Source Cases and Case Instantiations
 
