@@ -1379,6 +1379,12 @@ case std::integral auto integer
 case auto&& [first, second]
 ```
 
+A declaration pattern does not take another pattern as an operand. A
+structured-binding declaration can recursively introduce names for its
+elements, but this paper has no spelling that simultaneously names a whole
+value and matches that value with another pattern. Such a whole-value naming
+pattern is discussed in [And-Pattern and Whole-Value Naming Patterns].
+
 A declared name is introduced immediately for lookup, but using it from the
 same pattern is ill-formed. Pattern names are results of a successful match and
 are available to its guard and handler; they are not inputs to other parts of
@@ -3827,12 +3833,39 @@ exhaustiveness. R6 retains ordinary predicate objects for these cases.
 
 ## And-Pattern and Whole-Value Naming Patterns
 
-An and-pattern becomes especially useful with relational patterns, while a
-whole-value naming pattern can introduce a name for a value that also satisfies
-a nested pattern.
-Other languages use forms such as Rust's `name @ P` and OCaml's `P as name`.
-The C++ syntax, name initialization order, and interaction with non-trivial
-moves need to be designed together. R6 includes only `or`.
+An and-pattern could apply several predicates to the same subject:
+
+```cpp
+case std::meta::is_function and std::meta::is_deleted =>
+  handle_deleted_function();
+```
+
+It could also name a whole value selected by another pattern:
+
+```cpp
+case (Direction::North or Direction::South) and auto direction =>
+  use(direction);
+```
+
+The prototype implements both forms. Its and-pattern matches both subpatterns
+against the same subject, from left to right, and covers the intersection of
+their matching domains. `and` binds more tightly than `or`. Declarations from
+a successful left subpattern are initialized before the right subpattern is
+tested, then destroyed if it fails. As with declarations initialized before a
+guard, a left subpattern cannot perform a non-trivial move. Names become
+available to the guard and handler after the complete pattern succeeds; they
+are not inputs to another subpattern.
+
+Our LLVM migration did not find a compelling use for and-patterns. They are
+attractive, but R7 does not need them. A future proposal can revisit the
+prototype's choices together rather than making them part of this revision.
+
+This paper makes `P and Q` ill-formed, reserving that syntax for such an
+extension. A logical-and expression can still be written unambiguously as
+`bool(P && Q)`. R7 includes only `or`.
+
+Other languages instead provide dedicated whole-value naming forms such as
+Rust's `name @ P` and OCaml's `P as name`.
 
 ## Extractors and Sequence Patterns
 
