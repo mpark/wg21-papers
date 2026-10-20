@@ -20,6 +20,7 @@ highlighting:
     initialization. Non-reference declarations admit same-type, base-class,
     and restricted pointer relationships; reference declarations require a
     reference-compatible subject.
+  - Fixed declaration pattern packs may now be named.
   - Match cases retain source-order priority, but matching operations may be
     reordered and equivalent occurrences may be coalesced. Their results may
     be retained across guard evaluation.
@@ -186,9 +187,6 @@ spellings rather than mechanical source transformations.
 
 These are working notes for R7 and are not part of the proposal.
 
-- Clarify fixed decomposition pattern packs. `[Types...]` expands to
-  omitted-name declaration patterns, while `[Types ...values]` is ill-formed
-  because a fixed declaration pattern pack cannot introduce one shared name.
 - Update the standard-specialization table to use the state names `null` and
   `value` for pointers, smart pointers, and `optional`. The open protocol keeps
   the positive `has_value` operation; the `empty` member of closed
@@ -779,7 +777,7 @@ The patterns proposed are:
 | Declaration | `T x`<br>`C auto x`<br>`T`<br>`auto [x, y]`<br>`auto [...xs]` | Test restricted declaration matching semantics, optionally introducing names |
 | Parenthesized | `(P)` | Group a pattern |
 | Or | `P1 or P2` | Match either pattern |
-| Decomposition | `[]`<br>`[P@~1~@, /* ... */, P@~n~@]`<br>`[P@~1~@, ..., P@~n~@]`<br>`[P@~1~@, auto&& ...xs, P@~n~@]`<br>`[P@~1~@, auto&& ..., P@~n~@]`<br>`[xs...]`<br>`[Ts...]` | Recursively match structural elements, optionally consuming or expanding a pack |
+| Decomposition | `[]`<br>`[P@~1~@, /* ... */, P@~n~@]`<br>`[P@~1~@, ..., P@~n~@]`<br>`[P@~1~@, auto&& ...xs, P@~n~@]`<br>`[P@~1~@, auto&& ..., P@~n~@]`<br>`[xs...]`<br>`[Ts...]`<br>`[Ts... xs]` | Recursively match structural elements, optionally consuming or expanding a pack |
 | Alternative | `{ P }`<br>`{}`<br>`{ T: P }`<br>`{ C: P }`<br>`{ .name: P }`<br>`{ .name }` | Select an alternative and optionally project it |
 
 Every pattern has one current subject. A decomposition pattern
@@ -935,10 +933,10 @@ $decomposition-pattern-element$:
 Within a decomposition pattern, a bare `...` infers its arity from the subject.
 A placeholder declaration pack such as `auto&& ...xs` or `auto&& ...` does the
 same. At most one arity-inferred element is permitted. An expression pack such
-as `xs...`, or a declaration whose type contains an unexpanded pack such as
-`Ts...`, instead expands that enclosing template pack into a fixed number of
-patterns. A concrete declaration such as `Widget ...` does not form a pack and
-is ill-formed.
+as `xs...` instead expands into a fixed number of value patterns. An enclosing
+type pack `Ts` can similarly form a fixed number of declaration patterns.
+`Ts...` omits their names, while `Ts... xs` introduces the local pack `xs`. A
+declaration such as `Widget... xs` does not form a pack and is ill-formed.
 
 Finally, the pattern condition chain:
 
@@ -1679,16 +1677,13 @@ case [auto&& first, auto&& ..., auto&& last]
 case [auto&& first, ..., auto&& last]
 ```
 
-The first form introduces a local pack name. The second is an omitted-name
-placeholder declaration pack, following ordinary parameter syntax such as
-`void f(auto&&...)`; it checks each declaration but performs no initialization.
-A bare `...` is a wildcard pack and ignores an arity-inferred sequence of
-elements. This is essentially the pack version of the wildcard pattern `_`.
-Each pack can be empty, and its size is the decomposition arity minus the fixed
-prefix and suffix. These forms are decomposition-list elements rather than
-patterns in their own right, so they cannot be parenthesized or used outside a
-decomposition pattern. The same restriction applies to a fixed expression or
-type expansion such as `Values...` or `Types...`.
+The first form introduces a local pack name whose types are deduced
+independently. The second is an omitted-name placeholder declaration pack. It
+checks each declaration but performs no initialization. A bare `...` is a
+wildcard pack and ignores an arity-inferred sequence of elements. This is
+essentially the pack version of the wildcard pattern `_`. Each arity-inferred
+pack can be empty, and its size is the decomposition arity minus the fixed
+prefix and suffix.
 
 An enclosing expression pack expands to a fixed number of value patterns:
 
@@ -1702,31 +1697,22 @@ void classify(const auto& tup) {
 }
 ```
 
-An enclosing type pack similarly expands to a fixed number of omitted-name
-declaration patterns:
+An enclosing type pack similarly expands to a fixed number of declaration
+patterns. Following ordinary function parameter pack syntax, the declaration
+pack can introduce a local pack name:
 
 ```cpp
 template <typename... Types>
 void classify(const auto& tup) {
   match (tup) {
-    case [Types...] => typed_sequence();
+    case [Types... values] => typed_sequence(values...);
     case _ => different();
   }
 }
 ```
 
-Each expanded declaration checks its corresponding element without performing
-the initialization. An omitted-name declaration pack whose type contains no
-unexpanded template pack, such as `[Widget ...]`, is not proposed. A future
-revision can add that arity-inferred form without changing existing programs.
-
-An or-pattern can combine complete decomposition patterns containing packs,
-but cannot combine a pack element itself:
-
-```cpp
-case [0, auto&& ...values] or [auto&& ...values, 0] => use(values...);
-case [auto&& ...values or _] => use(values...); // error
-```
+Omitting the name as `[Types...]` performs the same checks without initializing
+the declarations. Both forms can expand to an empty sequence.
 
 Declaration patterns can themselves contain structured-binding packs:
 
@@ -1734,8 +1720,25 @@ Declaration patterns can themselves contain structured-binding packs:
 case auto [...elements] => (... + elements);
 ```
 
-The declaration, guard, and handler share a dedicated case scope where the
-pack can be expanded.
+Named declaration packs can be expanded in their case's guard and handler.
+
+Subpattern packs are leaf patterns by design. They cannot apply an arbitrary
+nested pattern repeatedly. For example, this does not match a tuple of
+pair-like elements:
+
+```cpp {.not_proposed}
+case [...[auto x, auto y]] => use(x..., y...);
+```
+
+They are only permitted as decomposition-list elements, so they cannot be
+parenthesized, used outside a decomposition pattern, or combined directly with
+`or`. An or-pattern can still combine complete decomposition patterns
+containing packs:
+
+```cpp
+case [0, auto&& ...values] or [auto&& ...values, 0] => use(values...);
+case [auto&& ...values or _] => use(values...); // error
+```
 
 ## Alternative Pattern
 
