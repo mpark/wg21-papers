@@ -231,15 +231,16 @@ These are working notes for R7 and are not part of the proposal.
 
 # Introduction
 
-This paper proposes pattern matching for C++29. It is the next
-revision of [@P2688R5], which was considered for C++26 at the February 2025
-Hagenberg meeting but did not reach consensus for forwarding to CWG.
+This paper proposes pattern matching for C++29, further refining the design
+presented in [@P2688R6].
 
-R6 is a substantial revision rather than merely a retargeting of [@P2688R5]
-for C++29. It retains first-match semantics and recursive composition of
-patterns, while replacing `let` with ordinary declarations, adopting prefix
-`match` for statement and expression forms, making alternative matching
-explicit with braces, and requiring exhaustiveness and redundancy diagnostics.
+[@P2688R5] was considered for C++26 at the February 2025 Hagenberg meeting but
+did not reach consensus for forwarding to CWG. [@P2688R6] was a substantial
+revision rather than merely a re-targeting for C++29. It retained first-match
+semantics and recursive composition of patterns, while replacing `let` with
+ordinary declarations, adopting prefix `match` for statement and expression
+forms, making alternative matching explicit with braces, and requiring
+exhaustiveness and redundancy diagnostics.
 
 # The Proposal in Examples
 
@@ -637,16 +638,14 @@ what a value looks like and introduces names for the relevant pieces. A match
 selection dispatches to the corresponding handler when that pattern
 succeeds.
 
-The changes in R6 have two primary goals:
+The design has two primary goals:
 
-  - using familiar C++ syntax such as `match (E) { /* cases */ }` and ordinary
-    declarations, instead of dedicated syntax such as `let` and
-    `? $pattern$`;
-  - increasing safety by requiring diagnostics for non-exhaustive selections
-    and redundant cases.
+  - Use familiar C++ syntax such as `match (E) { /* cases */ }` and ordinary
+    declarations, instead of dedicated syntax such as `let` and `? $pattern$`;
+  - Increase safety by requiring diagnostics for non-exhaustive selections and
+    redundant cases.
 
-The design also preserves the following directions from earlier EWG
-discussions:
+The paper also preserves the following directions from earlier EWG discussions:
 
   - Patterns compose recursively rather than forming a chain of separate
     matching operations. EWG expressed a preference for this direction at the
@@ -3059,8 +3058,8 @@ Such state can already be declared in the enclosing block. A name-only preamble
 also avoids creating a second init-statement mechanism with different
 control-flow rules.
 
-We also leave `consteval` blocks out of R6. They permit much more than
-introducing names or checking an invariant, and we do not yet have a
+We also leave `consteval` blocks out of this proposal. They permit much more
+than introducing names or checking an invariant, and we do not yet have a
 match-specific use that justifies importing their statement and scope rules.
 
 ### Statement and Expression Forms
@@ -3076,9 +3075,9 @@ value match {
 };
 ```
 
-R6 gives the prefix form a contextual split instead. In a direct statement
-context it is a match selection statement; the right operand of each `=>` is
-an ordinary statement and the closing brace needs no semicolon:
+This proposal gives the prefix form a contextual split instead. In a direct
+statement context it is a match selection statement; the right operand of each
+`=>` is an ordinary statement and the closing brace needs no semicolon:
 
 ```cpp
 match (value) {
@@ -3595,7 +3594,7 @@ to reconstruct it from a structured-binding name.
 
 A declaration pattern should have one meaning. Given
 `variant<int, string> value`, `auto&& selected` cannot simultaneously name
-the variant and whichever alternative is active. R6 makes the
+the variant and whichever alternative is active. This proposal makes the
 projection visible:
 
 ```cpp
@@ -3608,8 +3607,9 @@ current subject; `{ [int x, int y] }` first selects an alternative and then
 decomposes its payload. This keeps every nested pattern independent of how its
 subject was obtained.
 
-R5's `? P` combined a nullable test and dereference. R6 replaces it with
-`{ P }` and `{}`, using the same alternative model as `variant` and `expected`.
+R5's `? P` combined a nullable test and dereference. This proposal replaces it
+with `{ P }` and `{}`, using the same alternative model as `variant` and
+`expected`.
 R5's unbraced `T: P` becomes `{ T: P }`. The braces perform alternative
 selection, `T` selects an exactly advertised type, and `P` matches the
 projection. Variant's `.index<I>` is the corresponding opt-in escape hatch for
@@ -3873,16 +3873,17 @@ bool is_integer = match(input, case int);
 
 # Deferred Extensions
 
-R6 deliberately leaves the following facilities for later work. Their syntax
-and interaction with introduced names should not be fixed accidentally by this
-paper.
+This proposal deliberately leaves the following facilities for later work.
+Their syntax and interaction with introduced names should not be fixed
+accidentally by this paper.
 
 ## Relational and Range Patterns
 
 Patterns such as `< 0`, `1..10`, or a general range test would make numeric
 classification substantially more expressive. They also raise questions about
 open and closed endpoints, floating-point values, overloaded comparisons, and
-exhaustiveness. R6 retains ordinary predicate objects for these cases.
+exhaustiveness. This proposal retains ordinary predicate objects for these
+cases.
 
 ## And-Pattern and Whole-Value Naming Patterns
 
@@ -3929,9 +3930,9 @@ arity. Neither is needed for the product and alternative model proposed here.
 
 ## Further Customization
 
-The R6 alternative protocol uses reflection to describe states, but runtime
-discrimination still uses `index(subject)` and projection uses `get`. A fully
-reflection-driven projection protocol remains possible future work.
+The alternative protocol proposed here uses reflection to describe states, but
+runtime discrimination still uses `index(subject)` and projection uses `get`.
+A fully reflection-driven projection protocol remains possible future work.
 
 # Implementation Experience
 
@@ -4101,9 +4102,8 @@ cache identity for discriminators from cache identity for selected projections.
 # Wording Status
 
 The wording in [@P2688R5] describes the R5 design and is not reproduced here as
-if it described R6. The grammar and semantic rules in this revision are a
-design specification for the R6 facility. Complete wording remains to be
-written.
+if it described this revision. The grammar and semantic rules in this paper
+serve as its design specification. Complete wording remains to be written.
 
 The intended wording work includes the lexical treatment of `=>`, match
 selection statements and expressions, pattern grammar and semantics, scope,
