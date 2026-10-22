@@ -191,9 +191,6 @@ These are working notes for R7 and are not part of the proposal.
   `value` for pointers, smart pointers, and `optional`. The open protocol keeps
   the positive `has_value` operation; the `empty` member of closed
   `alternative_info` is unchanged.
-- State that a `goto` cannot enter a statement controlled by a pattern
-  condition and bypass the initialization of its pattern names. Match handlers
-  already have the corresponding protected-entry rule.
 - Audit the R6-to-R7 revision history once the R7 design is settled.
 - Remove the temporary review-boundary horizontal rule before publishing R7.
 - Continue to omit match init-statements and block-scope pattern declarations
@@ -1122,6 +1119,11 @@ void test() {
   if (case int x = ::x) { } // explicitly names the global object
 }
 ```
+
+The successful controlled statement of a pattern condition is a protected
+control-flow entry. A `goto` or enclosing `switch` cannot jump directly to a
+label inside it and bypass condition evaluation and initialization of its
+pattern names.
 
 The first top-level `=` separates the pattern from the subject. This is
 unambiguous because an assignment expression is not a pattern. An `if`
