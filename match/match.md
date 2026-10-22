@@ -204,11 +204,11 @@ These are working notes for R7 and are not part of the proposal.
   dependent and opaque patterns. Also establish implementation expectations
   for the exponential worst case of Maranget-style usefulness checking,
   including stress coverage and a controlled complexity limit or diagnostic.
-- Expand [Implementation Experience] with the Clang/LLVM migration experience
+- Expand [Integration Experience] with the Clang/LLVM migration experience
   and representative real examples from Clang/LLVM and Chromium.
 - Add representative `alternative_traits` opt-ins from Folly, LLVM, and
-  Thrift to [Implementation Experience], showing how existing types can
-  participate in pattern matching.
+  Thrift to [Integration Experience], showing how existing types can participate
+  in pattern matching.
 - Clarify which library components are proposed and how they relate to the
   language facility, including [Standard Specializations].
 - Address the concerns raised by P3619R1 in [Design Decisions and Alternatives
@@ -2782,6 +2782,11 @@ it says whether runtime states may remain after the advertised states have been
 covered. Those residual states participate in usefulness even though they are
 not required for exhaustiveness.
 
+An advertised domain can also be narrower than the return type of its
+discriminator. Exhaustiveness is checked against the advertised states, not
+every value of that return type. [Integration Experience] illustrates this
+distinction with Clang's `DeclContext`.
+
 For example, `expected<T, E>` advertises its value and error states and sets
 `has_residual_states` to `false`. After both states have been covered, there is
 nothing left for a wildcard to match:
@@ -3967,6 +3972,31 @@ We have implemented the proposal in Clang. The implementation is available at
 - Pattern-matrix exhaustiveness and usefulness diagnostics with source-like
   witnesses.
 - CFG and several analysis integrations.
+
+## Integration Experience
+
+Clang's `DeclContext::getDeclKind()` returns `Decl::Kind`, but only some values
+of that enumeration identify `DeclContext` classes. The historical
+`DeclContextPrinter` switched on this value and used an unreachable default:
+
+```cpp
+switch (DC->getDeclKind()) {
+  case Decl::Namespace: // ...
+  case Decl::CXXRecord: // ...
+  // ...
+  default:
+    llvm_unreachable("a decl that inherits DeclContext isn't handled");
+}
+```
+
+The switch omitted `ClassTemplateSpecializationDecl` and
+`ClassTemplatePartialSpecializationDecl`, causing a runtime crash. LLVM commit
+[`eebc494a577a`](https://github.com/llvm/llvm-project/commit/eebc494a577adb3d67a778c6fa1488299016ee88)
+added both cases. A generated `alternative_traits<DeclContext>` lists the
+concrete `DeclContext` classes. A match is checked against that list, rather
+than every value of `Decl::Kind`. Either omission can then be diagnosed as a
+non-exhaustiveness error without requiring a wildcard, as described in
+[Required and Residual Domains].
 
 ## Implementation Notes
 
