@@ -542,8 +542,8 @@ that array. Its role in usefulness checking is discussed in
 [Required and Residual Domains].
 
 The `name` in `{ .name: P }` is looked up in the return type of `index()`.
-We can change the return type of `index()` from `std::size_t` to an
-`enum class`:
+Keeping the same `alternatives` and `has_residual_states`, we can replace
+`index()` and `get<>()` with enum-based versions:
 
 ```cpp
 enum class state : bool { value, error };
@@ -554,57 +554,30 @@ static constexpr state index(const my::Result<T, E>& result) noexcept {
 
 template <state State, class Self>
 static constexpr decltype(auto) get(Self&& self) {
-  if constexpr (State == state::value)
+  if constexpr (State == state::value) {
     return std::forward<Self>(self).value();
-  else if constexpr (State == state::error)
+  } else if constexpr (State == state::error) {
     return std::forward<Self>(self).error();
-  else static_assert(false);
-}
-```
-
-With this, the user can now write named selectors. The corresponding protocol
-operations use `state::value` and `state::error` instead of numeric indices:
-
-::: cmptable
-
-### User Code {width=.4}
-
-```cpp
-my::Result<std::string, std::string> file =
-  read_file(path);
-
-match (file) {
-  case { .value: const auto& contents } => {
-    process(contents);
-  }
-  case { .error: const auto& message } => {
-    report(message);
+  } else {
+    static_assert(false);
   }
 }
 ```
 
-### Illustrative Lowering {width=.6}
+The user can then write named selectors, even when both alternatives have
+the same type:
 
 ```cpp
 my::Result<std::string, std::string> file = read_file(path);
 
-using AltTraits = std::alternative_traits<decltype(file)>;
-switch (auto idx = AltTraits::index(file)) {
-  using state = decltype(idx);
-  case state::value: {
-    const auto& contents = AltTraits::get<state::value>(file);
-    process(contents);
-    break;
-  }
-  case state::error: {
-    const auto& message = AltTraits::get<state::error>(file);
-    report(message);
-    break;
-  }
+match (file) {
+  case { .value: const auto& contents } => process(contents);
+  case { .error: const auto& message } => report(message);
 }
 ```
 
-:::
+The corresponding projections use `get<state::value>(file)` and
+`get<state::error>(file)` instead of numeric indices.
 
 The complete protocol also describes empty states, canonical value states,
 residual states, templated names, and open alternative types. Those facilities
@@ -2242,10 +2215,13 @@ struct alternative_traits<my::Result<T, E>> {
 
   template <state State, class Self>
   static constexpr decltype(auto) get(Self&& self) {
-    if constexpr (State == state::value)
+    if constexpr (State == state::value) {
       return std::forward<Self>(self).value();
-    else
+    } else if constexpr (State == state::error) {
       return std::forward<Self>(self).error();
+    } else {
+      static_assert(false);
+    }
   }
 };
 ```
