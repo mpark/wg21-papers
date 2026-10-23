@@ -1223,20 +1223,31 @@ The choice of `_` is discussed in [Wildcard and Value Patterns].
 
 > | `$inclusive-or-expression$`
 
-An expression pattern `E` has to be constant: a literal, `constexpr` variable,
-enumerator, function name, or `constexpr` function object, for example.
+An expression pattern `$E$` has to be constant: e.g. a literal, `constexpr`
+variable, enumerator, function name, or `constexpr` function object.
+
 Matching proceeds as follows:
 
-1. If `std::alternative_traits` advertises `E` as a state, test its
-   discriminator.
-2. Otherwise, if the subject and `E` have integral or enumeration types,
+Let `$S$` be the current subject being matched, and let `$AT$` denote
+`std::alternative_traits<std::remove_cvref_t<decltype($S$)>>`:
+
+1. If `$AT$` has a member named `alternatives` and one or more of its elements
+   advertise constants with the same canonical type and value as `$E$`, the
+   value pattern `$E$` matches if `$AT$::index($S$)` identifies one of the
+   corresponding states. This does not evaluate `operator==`. See
+   [Advertised Value States].
+2. Otherwise, if `$S$` and `$E$` have integral or enumeration types,
    apply the operand compatibility rules of the built-in three-way comparison.
    If those rules accept the operands, compare the converted operands with
    built-in equality. Otherwise, the pattern is not viable.
-3. Otherwise, if `bool($subject$ == E)` is well-formed, use that comparison.
-4. Otherwise, if `bool((E)($subject$))` is well-formed, invoke `E` as a
+3. Otherwise, if `bool($S$ == $E$)` is well-formed, use that comparison.
+4. Otherwise, if `bool(($E$)($S$))` is well-formed, invoke `$E$` as a
    predicate. The parenthesized callee suppresses argument-dependent lookup.
 5. Otherwise, the pattern is not viable.
+
+When `$AT$` has a member named `alternatives`, only the first step covers
+advertised states. A pattern handled by a later step can match at runtime but
+does not contribute coverage of an advertised state.
 
 The second step reuses the relevant built-in `<=>` rules. It does not evaluate
 an ordering operation or consider a user-defined `operator<=>`. It rejects a
@@ -2198,6 +2209,9 @@ the same protocol for open alternative types such as `any`. The name
 `alternative_traits`, as well as some of its member names, remains open to
 change.
 
+A specialization with a member named `alternatives` uses the closed indexed
+protocol. Otherwise, it uses the open type-indexed protocol.
+
 The protocol functions and the applicability tests and projections obtained
 from open-protocol result objects are user-provided matching operations under
 [Matching Operation Order and Reuse]. Its validity requirements apply to every
@@ -2269,11 +2283,64 @@ scoped enumeration, `.name` names an enumerator. For a class type, `.name` or
 discriminator provides no named selectors. All selectors for a projectable
 state use its `get` operation.
 
-An advertised constant value is matched by testing whether the subject is in
-the corresponding state, without invoking `operator==`. If several states
-advertise the same canonical value, the value pattern selects and covers all
-of them. A value pattern that is not advertised retains its ordinary equality
-semantics, but does not cover an advertised state for exhaustiveness analysis.
+### Advertised Value States
+
+An element can advertise a constant as the source-level label for its state.
+The constant in `alternatives[I]` labels state `I`; `index(subject)` still
+determines whether that state is active. A value pattern selects the state when
+its constant has the same canonical type and value as the advertised constant.
+The advertised constant is not compared with the subject or the discriminator,
+and matching it does not invoke `operator==`.
+
+A connection can expose a closed domain without making the connection itself
+comparable with its state labels:
+
+```cpp
+namespace my {
+  enum class ConnectionState { disconnected, connecting, connected };
+
+  class Connection {
+  public:
+    ConnectionState state() const noexcept;
+  };
+}
+
+template <>
+struct std::alternative_traits<my::Connection> {
+  static constexpr alternative_info alternatives[] = {
+    ^^my::ConnectionState::disconnected,
+    ^^my::ConnectionState::connecting,
+    ^^my::ConnectionState::connected,
+  };
+  static constexpr bool has_residual_states = false;
+
+  static constexpr my::ConnectionState
+  index(const my::Connection& connection) noexcept {
+    return connection.state();
+  }
+};
+```
+
+The advertised values can then be used directly and prove exhaustiveness:
+
+```cpp
+void monitor(const my::Connection& connection) {
+  match (connection) {
+    case my::ConnectionState::disconnected => wait_for_connection();
+    case my::ConnectionState::connecting   => show_progress();
+    case my::ConnectionState::connected    => begin_work();
+  }
+}
+```
+
+No `get` operation is provided because these states are value-selected and
+non-projectable. If several states advertise the same canonical value, the
+value pattern selects and covers all of them.
+
+When a specialization does not advertise the pattern constant, matching
+continues with the remaining rules in [Value and Predicate Patterns]. This
+includes open specializations, which advertise no value states. Such matching
+does not cover an advertised state for exhaustiveness analysis.
 
 ## Open Type-Indexed Protocol
 
