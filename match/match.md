@@ -20,6 +20,9 @@ highlighting:
     initialization. Non-reference declarations admit same-type, base-class,
     and restricted pointer relationships; reference declarations require a
     reference-compatible subject.
+  - A pattern that cannot apply to any value in the subject's domain remains
+    ill-formed. A case that is applicable but redundant because of preceding
+    cases is now well-formed, with a recommended warning.
   - Fixed declaration pattern packs may now be named.
   - Match cases retain source-order priority, but matching operations may be
     reordered and equivalent occurrences may be coalesced. Their results may
@@ -200,10 +203,6 @@ These are working notes for R7 and are not part of the proposal.
   for exhaustiveness. Distinct enumerator values are required and unnamed
   values in the enum's range are residual, but these attributes still need an
   explicit policy.
-- Specify a stable conservative boundary for usefulness diagnostics over
-  dependent and opaque patterns. Also establish implementation expectations
-  for the exponential worst case of Maranget-style usefulness checking,
-  including stress coverage and a controlled complexity limit or diagnostic.
 - Expand [Integration Experience] with the Clang/LLVM migration experience
   and representative real examples from Clang/LLVM and Chromium.
 - Add representative `alternative_traits` opt-ins from Folly, LLVM, and
@@ -639,8 +638,8 @@ The design has two primary goals:
 
   - Use familiar C++ syntax such as `match (E) { /* cases */ }` and ordinary
     declarations, instead of dedicated syntax such as `let` and `? $pattern$`;
-  - Increase safety by requiring diagnostics for non-exhaustive selections and
-    redundant cases.
+  - Increase safety by making non-exhaustive selections ill-formed and
+    encouraging implementations to warn about redundant cases.
 
 The paper also preserves the following directions from earlier EWG discussions:
 
@@ -2574,7 +2573,7 @@ usefulness, exhaustiveness, and projection treat them identically:
 match (state_value) {
   case state::value => handle_value();
   case state::error => handle_error();
-  case state::err => handle_err(); // error: redundant
+  case state::err => handle_err(); // warning: redundant
 }
 ```
 
@@ -2650,8 +2649,8 @@ This permissiveness is specific to dependent matching. In the corresponding
 non-dependent match on an rvalue `optional<int>`, `{ int& }` cannot match any
 projectable state and is diagnosed even when a later wildcard is present.
 
-Some dependent patterns are nevertheless provably useless. A built-in array
-has a fixed, non-customizable decomposition arity:
+Some dependent patterns are nevertheless provably inapplicable. A built-in
+array has a fixed, non-customizable decomposition arity:
 
 ```cpp
 template <class T>
@@ -2664,10 +2663,8 @@ int classify(T (&value)[2]) {
 ```
 
 No substitution can make this three-element pattern match the two-element
-array. The prototype currently calls it maybe useful because it is dependent.
-Whether we should require this diagnostic remains an open question. We cannot
-infer the same answer for `variant<T>` without making assumptions about
-possible specializations and their projection behavior.
+array, so the program is ill-formed. By contrast, `{ char }` is potentially
+applicable to a dependent `variant<T>` because `T` can be `char`.
 
 Exhaustiveness is checked for each concrete specialization:
 
@@ -2745,9 +2742,33 @@ useful does not instantiate its guard or handler.
 A guarded case does not contribute coverage because its guard can fail. If
 usefulness cannot be determined, the guard and handler are instantiated.
 
-# Exhaustiveness and Usefulness
+# Applicability, Exhaustiveness, and Usefulness
 
-Non-exhaustiveness and redundancy are hard errors, not optional warnings:
+Applicability, exhaustiveness, and usefulness answer different questions.
+Applicability ignores preceding cases and asks whether a pattern can match any
+value in the subject's domain. A case in a non-dependent match whose pattern is
+not applicable is ill-formed:
+
+```cpp
+variant<int, string> value;
+
+match (value) {
+  case { char character } => use(character); // error: not applicable
+  case _                  => fallback();
+}
+```
+
+Applicability is checked independently of source order. Coverage from a
+preceding case therefore cannot turn an inapplicable pattern into a redundant
+one. In a dependent match, a pattern is ill-formed only when it can be
+established that no substitution can make it applicable. Otherwise, case
+instantiations to which it does not apply are omitted as described in
+[Dependent Case Matching]. A dependent or opaque matching operation is
+considered potentially applicable unless the pattern can be proven
+inapplicable without evaluating that operation.
+
+Exhaustiveness asks whether the cases cover every required value in the
+subject's domain. A non-exhaustive match selection is ill-formed:
 
 ```cpp
 bool value;
@@ -2757,21 +2778,30 @@ match (value) {
 }; // error: example of a missing case: false
 ```
 
+Usefulness additionally considers the coverage of preceding unguarded cases.
+An applicable case that cannot be selected is redundant. A redundant source
+case is well-formed, and implementations should warn:
+
 ```cpp
 match (value) {
   case true  => yes();
   case false => no();
   case _     => impossible();
-}; // error: redundant case
+}; // warning: redundant case
 ```
 
-Guarded cases are useful but do not contribute coverage because their guards
-can fail.
+Usefulness also affects case instantiation, as described in [Case-Local
+Instantiation]. A source case can be useful overall even when some of its
+case instantiations are not.
+
+Guarded cases do not contribute coverage because their guards can fail. They
+can nevertheless be redundant when preceding unguarded cases cover their
+patterns.
 
 [@P2211R0] previously developed Maranget-based exhaustiveness checking for
-C++ pattern matching. This proposal extends the model to account for required
-usefulness, introducing `std::alternative_traits` which integrates with
-the exhaustiveness algorithm, and the implementation work in the prototype.
+C++ pattern matching. This proposal extends the model with
+`std::alternative_traits`, redundancy diagnostics, and case-local
+instantiation.
 
 ## Required and Residual Domains
 
@@ -2796,7 +2826,7 @@ void match_expected(std::expected<int, std::string> result) {
   match (result) {
     case { int value } => use(value);
     case { std::string error } => report(error);
-    case _ => ; // error: redundant case
+    case _ => ; // warning: redundant case
   }
 }
 ```
@@ -2817,7 +2847,7 @@ void match_variant(std::variant<int, std::string> value) {
 ```
 
 Both selections would remain exhaustive without their wildcard. The difference
-is that only the `expected` wildcard can be diagnosed as redundant.
+is that only the `expected` wildcard is redundant and should produce a warning.
 
 More generally:
 
@@ -3136,7 +3166,7 @@ A match selection can be a statement or expression and does not require its
 subject to be converted to an integral type. Pattern declarations initialize
 only after their patterns match. Handlers do not fall through, and jumps
 cannot enter a handler without matching its pattern. A match selection must
-be exhaustive, and its cases must be useful.
+be exhaustive, and implementations should warn about redundant cases.
 
 An arrow form could select the new semantics and prohibit mixing with old
 case labels. That would keep existing code working, but `switch` would then
