@@ -190,10 +190,6 @@ spellings rather than mechanical source transformations.
 
 These are working notes for R7 and are not part of the proposal.
 
-- Update the standard-specialization table to use the state names `null` and
-  `value` for pointers, smart pointers, and `optional`. The open protocol keeps
-  the positive `has_value` operation; the `empty` member of closed
-  `alternative_info` is unchanged.
 - Audit the R6-to-R7 revision history once the R7 design is settled.
 - Remove the temporary review-boundary horizontal rule before publishing R7.
 - Continue to omit match init-statements and block-scope pattern declarations
@@ -2457,10 +2453,10 @@ With both protocol forms established, the proposed standard specializations are:
 
 | Subject | Model | Required states | Residual state |
 |:--------------------:|-------------------------------|:--------------------------:|:------------------:|
-| `T*` | built-in closed nullable type | null, non-null | none |
-| `unique_ptr<T, D>` | closed nullable type | null, non-null | none |
-| `shared_ptr<T>` | closed nullable type | null, non-null | none |
-| `optional<T>` | closed nullable type | empty, value | none |
+| `T*` | built-in closed nullable type | null, value | none |
+| `unique_ptr<T, D>` | closed nullable type | null, value | none |
+| `shared_ptr<T>` | closed nullable type | null, value | none |
+| `optional<T>` | closed nullable type | null, value | none |
 | `expected<T, E>` | closed value-or-error type | value, error | none |
 | `variant<Ts...>` | closed indexed alternative type | every declared index | valueless |
 | `any` | open type-indexed alternative type | empty and selected types | open remainder |
@@ -2592,24 +2588,24 @@ struct alternative_traits<variant<Types...>> {
     template <size_t I>
     static constexpr size_t index = I;
 
-    friend constexpr bool operator==(state, state) = default;
+    constexpr operator size_t() const noexcept { return value; }
   };
 
   static constexpr state index(variant<Types...> const& value) noexcept {
     return {value.index()};
   }
 
-  template <state State, class Self>
+  template <size_t I, class Self>
   static constexpr decltype(auto) get(Self&& self) noexcept {
-    return /* unchecked projection of alternative State.value */;
+    return /* unchecked projection of alternative I */;
   }
 };
 ```
 
-The discriminator is a structural class, so the selected state is passed
-directly to `get<State>`. It has no integral conversion; matching compares
-state values directly, and an implementation remains free to lower the
-dispatch to a switch.
+The discriminator is a class so that it can provide the parameterized selector
+`.index<I>`. Its conversion to `size_t` makes it directly comparable with those
+selector values and usable as the condition of a `switch`. The selected index
+is passed directly to `get<I>`.
 
 `.index<I>` exists because `variant`'s discriminator provides a variable
 template mapping `I` to its state, not because positional selection is
