@@ -199,10 +199,6 @@ These are working notes for R7 and are not part of the proposal.
 - Continue to omit match init-statements and block-scope pattern declarations
   from R7. They are implemented as prototype extensions but are not currently
   part of this proposal.
-- Decide whether unavailable and `[[maybe_unused]]` enumerators remain required
-  for exhaustiveness. Distinct enumerator values are required and unnamed
-  values in the enum's range are residual, but these attributes still need an
-  explicit policy.
 - Expand [Integration Experience] with the Clang/LLVM migration experience
   and representative real examples from Clang/LLVM and Chromium.
 - Add representative `alternative_traits` opt-ins from Folly, LLVM, and
@@ -2853,8 +2849,9 @@ More generally:
 
 - `bool` requires `true` and `false`.
 - integer types require their full value domain.
-- an enum requires each distinct declared enumerator value. Other legal values
-  in its underlying range are residual unless explicit constants cover them.
+- an enum requires each distinct declared enumerator value, regardless of
+  attributes on the enumerators. Other legal values in its underlying range
+  are residual unless explicit constants cover them.
 - `variant` requires each advertised index; valueless-by-exception is residual.
 - exhaustive closed traits such as `optional` and `expected` require every
   advertised state and have no residual state.
