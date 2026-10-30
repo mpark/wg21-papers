@@ -1964,10 +1964,9 @@ denotes an object.
 
 ## Alternative Projection
 
-For a non-polymorphic type, a declaration pattern has only its normal
-declaration meaning. With a `variant`, matching against a `auto&& name`
-therefore binds the whole `variant`. Braces project an alternative which is
-then recursively matched by the pattern within.
+A bare `auto&` declaration binds the current subject. For a `variant`,
+this binds the whole `variant`. Braces instead project the active alternative,
+which is then recursively matched by the nested pattern.
 
 ```cpp
 void consume_whole(variant<int, string>&);
@@ -1978,18 +1977,18 @@ void consume_payload(string&);
 variant<int, string> value;
 
 match (value) {
-  case auto&& whole => consume_whole(whole);
+  case auto& whole => consume_whole(whole);
 }
 
 match (value) {
-  case { auto&& payload } => consume_payload(payload);
+  case { auto& payload } => consume_payload(payload);
 }
 ```
 
-The `auto&& payload` is instantiated with `int` and `string`.
+The payload case and its handler are instantiated separately for `int` and
+`string`, as described in [Case-Local Instantiation].
 
-The projection of the alternative being performed by the braces can be
-illustrated like this:
+The projection performed by the braces can be illustrated with `std::visit`:
 
 ::: cmptable
 
@@ -2002,11 +2001,11 @@ match (var) {
 }
 ```
 
-### `visit` and a Dependent Match {width=.58}
+### Illustrative Comparison {width=.58}
 
 ```cpp
-std::visit([](auto&& alt) {
-  match (FWD(alt)) {
+std::visit([](auto& payload) {
+  match (payload) {
     case P1 => E1;
     case P2 => E2;
   }
@@ -2017,8 +2016,7 @@ std::visit([](auto&& alt) {
 
 On the right, `std::visit` explicitly projects the alternative and `match`
 applies `P1` and `P2` directly to that projection. Braces perform both steps
-without introducing a library call or requiring the user to write the generic
-visitor.
+without requiring the user to write the generic visitor or call `std::visit`.
 
 ## Closed Alternative Types
 
@@ -2026,9 +2024,9 @@ For a closed alternative type, `{ P }` considers every projectable state for
 which `P` is viable. At runtime, it tests the active state and uses the
 corresponding case instantiation.
 
-The `match` inside the generic lambda above is dependent. A non-dependent
-closed type has the additional requirement that each case be capable of
-matching at least one advertised projection:
+The `match` inside the generic lambda above is dependent. In a non-dependent
+match, a projecting alternative pattern must be viable for at least one
+advertised projection:
 
 ```cpp
 variant<int, std::string> value;
@@ -2040,8 +2038,8 @@ match (value) {
 }
 ```
 
-The same case in a match on `variant<Ts...>` remains potentially useful and is
-simply omitted from a specialization whose alternatives do not include
+The same case in a `match` on `variant<Ts...>` remains potentially viable
+and is omitted from a specialization whose alternatives do not include
 `double`:
 
 ```cpp
@@ -2072,11 +2070,12 @@ Qualification adjustments can also make one declaration apply to several
 alternatives. Usefulness is checked against the actual indices and nested value
 patterns, not just the type written in the source.
 
-`{ auto&& value }` is the generic case. Its declaration, guard, and handler are
-checked separately for every remaining alternative type.
+The generic form `{ auto&& value }` considers each projectable state. Its guard
+and handler are instantiated only for viable, useful case instantiations,
+as described in [Case-Local Instantiation].
 
 A projectable state can even have declared type `void`. This is useful to match
-the alternatives of an `std::expected<void, E>`:
+the alternatives of `expected<void, E>`:
 
 ```cpp
 expected<void, Error> result;
@@ -2226,6 +2225,8 @@ struct alternative_traits<my::Result<T, E>> {
 };
 ```
 
+### States and Projections
+
 The `alternatives` array describes the required state domain. Element `I`
 describes state `I`. Its `info` is one of:
 
@@ -2234,11 +2235,12 @@ describes state `I`. Its `info` is one of:
 - a reflected constant value, for a state selected by that value pattern.
 
 The `alternative_info` constructor canonicalizes reflected constant values.
-A type can be `void`. A typed state requires a compatible projection and
-must have `empty == false`. A state with null `info` can also provide a
-projection for a named or indexed selector. A value-selected state is not
-projectable. `{}` selects a state with `empty == true`. Such a state can
-also advertise a value, as for `nullopt`, or it can be anonymous.
+A state is projectable if and only if its `info` reflects a type, including
+`void`. It requires a compatible projection and must have `empty == false`.
+States with null `info` and value-selected states are not projectable, even if
+the specialization provides `get` for them. `{}` selects a state with
+`empty == true`. Such a state can also advertise a value, as for `nullopt`, or
+it can be anonymous.
 
 The remaining members have the following contracts:
 
@@ -2715,6 +2717,24 @@ static_assert(arity(tuple(1, 2)) == 2);
 ```
 
 ## Case-Local Instantiation
+
+For a non-dependent closed subject, a generic projection such as `{ auto x }`
+introduces alternative dependence only when `alternatives` advertises more
+than one projectable state. A single projectable state leaves the declaration,
+guard, and handler non-dependent:
+
+| Subject | Projectable states | Case context for `{ auto x }` |
+| ------- | ------------------ | ----------------------------- |
+| `optional<int>` | 1 | Non-dependent |
+| `variant<int>` | 1 | Non-dependent |
+| `variant<int, int>` | 2 | Alternative-dependent |
+| `variant<int, string>` | 2 | Alternative-dependent |
+
+The count is of entries whose `info` reflects a type, as described in
+[States and Projections], not distinct types or return types inferred from
+`get<>()`. Repeated alternatives remain separate even when their projections
+have the same type. This rule does not remove dependence inherited from an
+enclosing template or an outer alternative projection.
 
 In a dependent match selection, the preamble is instantiated once for the
 enclosing specialization, before any applicable source case is instantiated
