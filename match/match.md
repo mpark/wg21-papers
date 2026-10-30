@@ -61,7 +61,7 @@ highlighting:
   - Declaration patterns replace `let` patterns. Their restricted declarator
     supports ordinary pointer, reference, member-pointer, function-pointer,
     and array-reference forms, with a separate structured-binding form.
-    Applicability uses exact-match conversions plus direct derived-to-base
+    Viability uses exact-match conversions plus direct derived-to-base
     reference binding. An omitted identifier checks the corresponding
     initialization without performing it. R5's combined `P let name` form is
     not retained; whole-value naming is deferred.
@@ -667,13 +667,14 @@ While a *match-selection-statement* can simply have a *compound-statement* on
 the right of `=>`, a *match-selection-expression* continues to rely on
 [@P2806R5]{.title} to do *statement* things.
 
-A match selection considers its cases in source order and selects the first
+A match selection gives its cases source-order priority and selects the first
 case whose pattern and guard, if present, succeed. Every match selection must
-be exhaustive, and every case must be useful.
+be exhaustive.
 
 A *match-test-expression* is a boolean expression that is ill-formed if the
-pattern is not viable for the subject(s). Otherwise, it produces `true` if the
-pattern matches and `false` if it does not. It does not export names.
+pattern is not viable for the subject(s), as described in
+[Viability, Exhaustiveness, and Usefulness]. Otherwise, it produces `true` if
+the pattern matches and `false` if it does not. It does not export names.
 
 ```cpp
 match($subjects$, case $pattern$)
@@ -1048,7 +1049,7 @@ pattern makes the expression ill-formed rather than `false`. In a dependent
 context, viability is checked after substitution. [Strict Viability] discusses
 this choice and the corresponding use of a *requires-expression* for detection.
 
-For a viable pattern, the expression evaluates its subject once and produces
+For a well-formed test, the expression evaluates its subject once and produces
 `true` if the pattern matches and `false` otherwise.
 
 Pattern conditions are used in `if`, `while`, and traditional `for` statements:
@@ -1338,7 +1339,7 @@ in [Wildcard and Value Patterns].
 
 ## Declaration Patterns
 
-A declaration pattern first tests whether its declaration is applicable to the
+A declaration pattern first tests whether its declaration is viable for the
 current subject. If the pattern matches and the declaration has a name, it is
 copy-initialized from that subject:
 
@@ -1396,9 +1397,9 @@ a nested decomposition pattern.
 
 ### Static Declaration Matching
 
-Applicability is based on ordinary declaration initialization. Let `$E$` be the
+Viability is based on ordinary declaration initialization. Let `$E$` be the
 current subject expression and `$D$` the declared type after placeholder
-deduction, if any. The declaration is statically applicable when the implicit
+deduction, if any. The declaration is statically viable when the implicit
 conversion sequence for copy-initializing `$D$` from `$E$` is a standard
 conversion sequence and one of the following holds:
 
@@ -1427,8 +1428,8 @@ intended for a later `int` declaration:
 
 ```cpp
 match (int_value) {
-  case bool value => use(value); // error: bool is not applicable to int
-  case true       => use_true(); // error: true is not applicable to int
+  case bool value => use(value); // error: bool is not viable for int
+  case true       => use_true(); // error: true is not viable for int
   case int value  => use(value);
 }
 ```
@@ -1462,16 +1463,16 @@ polymorphic matching does not apply to pointer declarations. Matching a
 pointee requires the explicit nullable projection described in
 [Pointer Subjects].
 
-Cases remain source-ordered. Declaration applicability does not rank or reorder
+Cases remain source-ordered. Declaration viability does not rank or reorder
 cases as an overload set would.
 
-### Applicability Versus Failed Initialization
+### Viability Versus Failed Initialization
 
 There are three possible outcomes for a named declaration pattern:
 
-1. It is not applicable to its current subject.
-2. It is applicable and initialization succeeds.
-3. It is applicable, but the selected initialization is ill-formed.
+1. It is not viable for its current subject.
+2. It is viable and initialization succeeds.
+3. It is viable, but the selected initialization is ill-formed.
 
 Reference binding can produce (1):
 
@@ -1486,7 +1487,7 @@ int classify(variant<T> value) {
 ```
 
 For an ordinary `variant<T>`, projecting from `std::move(value)` produces
-`T&&`. The `T&` declaration is not applicable, so its case is omitted for that
+`T&&`. The `T&` declaration is not viable, so its case is omitted for that
 specialization and the wildcard is selected.
 
 Unless an instantiation is skipped by the coverage rules in
@@ -1515,7 +1516,7 @@ error into different program behavior.
 
 ### Omitted-Name Declaration Patterns
 
-A declaration pattern can omit its identifier. It has the same applicability
+A declaration pattern can omit its identifier. It has the same viability
 and well-formedness requirements as the corresponding named declaration,
 including access, deleted constructors, and reference binding, but does not
 perform the initialization:
@@ -1531,7 +1532,7 @@ case [auto&&, auto&&]
 Because the initialization is not evaluated, no object is created or
 destroyed, the subject cannot be moved from, and the hypothetical operation
 does not contribute to the exception specification. Invalid initializations
-are diagnosed as described in [Applicability Versus Failed Initialization].
+are diagnosed as described in [Viability Versus Failed Initialization].
 
 `void` and cv-`void` are explicitly supported. This matters for dependent
 `void` expressions and `expected<void, E>` projections.
@@ -1766,7 +1767,7 @@ match (result) {
 
 Type selectors distinguish alternatives when their behavior differs. When
 alternatives share behavior, the selectors can be omitted and one nested
-pattern can cover every applicable projection:
+pattern can cover every projection for which it is viable:
 
 ::: cmptable
 
@@ -1937,9 +1938,9 @@ match (value) {
 }
 ```
 
-For a known `Shape*` subject, a bare `Circle*` pattern is not applicable and is
+For a known `Shape*` subject, a bare `Circle*` pattern is not viable and is
 ill-formed. In a dependent match it follows the general rules for a
-potentially applicable declaration case; it does not acquire runtime
+potentially viable declaration case; it does not acquire runtime
 polymorphic pointer-cast semantics:
 
 ```cpp
@@ -2180,7 +2181,7 @@ change.
 A specialization with a member named `alternatives` uses the closed indexed
 protocol. Otherwise, it uses the open type-indexed protocol.
 
-The protocol functions and the applicability tests and projections obtained
+The protocol functions and the Boolean tests and projections obtained
 from open-protocol result objects are user-provided matching operations under
 [Matching Operation Order and Reuse]. Its validity requirements apply to every
 specialization.
@@ -2626,7 +2627,7 @@ avoids the misleading synonym and exposes only `value` and `error`.
 
 ## Dependent Case Matching
 
-A dependent match selection can contain a case that applies in one
+A dependent match selection can contain a case whose pattern is viable in one
 specialization and not another:
 
 ```cpp
@@ -2641,8 +2642,8 @@ int classify_value(T value) {
 ```
 
 For `T` equal to `int`, the `std::string` case is omitted; for `T` equal to
-`std::string`, the `int` case is omitted. Each source case remains potentially
-useful because it can apply in another specialization.
+`std::string`, the `int` case is omitted. Each pattern can be viable in another
+specialization.
 
 The same rule applies recursively after alternative projection:
 
@@ -2658,13 +2659,13 @@ int classify_variant(V value) {
 ```
 
 For `variant<int, std::string>`, the `char` case is not instantiated. It remains
-maybe useful because another specialization could contain `char`. The same
-case on a non-dependent `variant<int, std::string>` is ill-formed because it
-cannot match anything.
+potentially viable because another specialization could contain `char`. The
+same case on a non-dependent `variant<int, std::string>` is ill-formed because
+its pattern is not viable.
 
-As shown in [Applicability Versus Failed Initialization], reference binding can
-also make a case apply only in some specializations. This does not make a `T&`
-case generally useless for an rvalue alternative type. In C++26,
+As shown in [Viability Versus Failed Initialization], reference binding can
+also make a pattern viable only in some specializations. This does not make a
+`T&` pattern generally non-viable for an rvalue alternative type. In C++26,
 `optional<T&>` is valid and dereferencing it produces `T&` even when
 the `optional` itself is an rvalue:
 
@@ -2686,7 +2687,7 @@ This permissiveness is specific to dependent matching. In the corresponding
 non-dependent match on an rvalue `optional<int>`, `{ int& }` cannot match any
 projectable state and is diagnosed even when a later wildcard is present.
 
-Some dependent patterns are nevertheless provably inapplicable. A built-in
+Some dependent patterns are nevertheless provably non-viable. A built-in
 array has a fixed, non-customizable decomposition arity:
 
 ```cpp
@@ -2701,7 +2702,7 @@ int classify(T (&value)[2]) {
 
 No substitution can make this three-element pattern match the two-element
 array, so the program is ill-formed. By contrast, `{ char }` is potentially
-applicable to a dependent `variant<T>` because `T` can be `char`.
+viable for a dependent `variant<T>` because `T` can be `char`.
 
 Exhaustiveness is checked for each concrete specialization:
 
@@ -2737,7 +2738,7 @@ have the same type. This rule does not remove dependence inherited from an
 enclosing template or an outer alternative projection.
 
 In a dependent match selection, the preamble is instantiated once for the
-enclosing specialization, before any applicable source case is instantiated
+enclosing specialization, before any viable source case is instantiated
 for alternative projections. It is not duplicated for each such case
 instantiation.
 
@@ -2797,30 +2798,34 @@ useful does not instantiate its guard or handler.
 A guarded case does not contribute coverage because its guard can fail. If
 usefulness cannot be determined, the guard and handler are instantiated.
 
-# Applicability, Exhaustiveness, and Usefulness
+# Viability, Exhaustiveness, and Usefulness
 
-Applicability, exhaustiveness, and usefulness answer different questions.
-Applicability ignores preceding cases and asks whether a pattern can match any
-value in the subject's domain. A case in a non-dependent match whose pattern is
-not applicable is ill-formed:
+Viability, exhaustiveness, and usefulness answer different questions. A
+pattern is *viable* for a subject when the static matching requirements of its
+pattern form are satisfied. Viability is independent of the subject's runtime
+value and preceding cases. A case in a non-dependent match whose pattern is
+not viable is ill-formed:
 
 ```cpp
 variant<int, string> value;
 
 match (value) {
-  case { char character } => use(character); // error: not applicable
+  case { char character } => use(character); // error: not viable
   case _                  => fallback();
 }
 ```
 
-Applicability is checked independently of source order. Coverage from a
-preceding case therefore cannot turn an inapplicable pattern into a redundant
-one. In a dependent match, a pattern is ill-formed only when it can be
-established that no substitution can make it applicable. Otherwise, case
-instantiations to which it does not apply are omitted as described in
+Viability does not imply that a selected declaration's initialization is
+well-formed, as described in [Viability Versus Failed Initialization]. Guards
+and handlers are checked separately as described in [Case-Local Instantiation].
+
+Coverage from a preceding case cannot turn a non-viable pattern into a
+redundant one. In a dependent match, a pattern is ill-formed only when it can be
+established that no substitution can make it viable. Otherwise, case
+instantiations for which it is not viable are omitted as described in
 [Dependent Case Matching]. A dependent or opaque matching operation is
-considered potentially applicable unless the pattern can be proven
-inapplicable without evaluating that operation.
+considered potentially viable unless the pattern can be proven
+non-viable without evaluating that operation.
 
 Exhaustiveness asks whether the cases cover every required value in the
 subject's domain. A non-exhaustive match selection is ill-formed:
@@ -2834,8 +2839,8 @@ match (value) {
 ```
 
 Usefulness additionally considers the coverage of preceding unguarded cases.
-An applicable case that cannot be selected is redundant. A redundant source
-case is well-formed, and implementations should warn:
+A viable case that cannot be selected is redundant. Such a source case is
+well-formed, and implementations should warn:
 
 ```cpp
 match (value) {
@@ -3021,14 +3026,14 @@ therefore not subject to the guarded-move restriction.
 
 Source-order case priority does not prescribe one sequence of matching
 operations. Their relative order is unspecified except where a pattern imposes
-an order. Applicability precedes projection, which precedes matching the
-projection against a nested pattern.
+an order. For an alternative pattern, its state or cast result is tested
+before projection. The projection is then matched against the nested pattern.
 
 The following matching operations can be shared:
 
 - closed alternative discriminators and selected projections;
 - tuple-like `get<I>`;
-- open alternative calls, applicability tests, and successful projections;
+- open alternative calls, Boolean tests, and successful projections;
 - runtime-checked polymorphic casts and their adjusted pointers;
 - built-in comparisons used by value patterns that require no user-defined
   conversion.
@@ -3631,7 +3636,7 @@ match (value) {
 }
 ```
 
-The distinction between applicability and initialization follows ordinary
+The distinction between viability and initialization follows ordinary
 overload resolution:
 
 ```cpp
@@ -3650,7 +3655,7 @@ void examples(Job& job) {
 ```
 
 A declaration pattern follows the same two stages. A reference that cannot
-bind makes the pattern inapplicable; a selected by-value declaration whose
+bind makes the pattern non-viable; a selected by-value declaration whose
 copy is deleted is an error rather than a failed match.
 
 Third, a named by-value declaration really copies or moves. Allowing only
@@ -3804,12 +3809,13 @@ expression. We keep those questions separate. This also prevents a typo in a
 required pattern condition from silently selecting `else`.
 
 ```cpp
-requires { match(E, case P); } // Is P viable?
-match(E, case P)               // Given viability, does this value match?
+requires { match(E, case P); } // Is the pattern test well-formed?
+match(E, case P)               // Does this value match?
 ```
 
-A simple requirement can therefore detect whether a pattern is viable without
-evaluating the subject:
+A simple requirement checks whether the pattern test is well-formed without
+evaluating the subject. This includes viability and any required declaration
+initialization:
 
 ```cpp
 template <class T>
@@ -3822,8 +3828,8 @@ static_assert(!is_two_element<int>);
 ```
 
 Dependent match selections behave differently: a non-viable source case is
-discarded for that specialization. For a viable pattern, the single-pattern
-test is therefore equivalent in value to:
+discarded for that specialization. A well-formed single-pattern test is
+therefore equivalent in value to:
 
 ```cpp
 (match (E) { case P => true; case _ => false; })
@@ -3834,13 +3840,13 @@ such a pattern is viable, it always matches, so `false` would uniquely mean
 that the pattern was not viable. The expression would nevertheless remain an
 evaluated context: `match(do_work(), case P)` evaluates `do_work()` and any
 required matching operations. By contrast,
-`requires { match(do_work(), case P); }` asks only whether the pattern is viable
+`requires { match(do_work(), case P); }` asks whether the test is well-formed
 and does not call `do_work()`. We retain that separation even for irrefutable
 patterns.
 
 An explicit `match requires` mode was also considered. It makes generic
 structural dispatch convenient, but gives us two nearly identical forms of
-`match`. It also does not remove the need to distinguish an inapplicable case
+`match`. It also does not remove the need to distinguish a non-viable case
 from a selected declaration whose initialization is invalid. We keep
 single-pattern tests strict and handle dependent match cases separately.
 
