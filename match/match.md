@@ -16,17 +16,37 @@ highlighting:
 # Revision History {- .collapsed}
 
 ## R6 → R7 {- .unlisted #r6-to-r7}
-  - Declaration-pattern applicability now uses restricted ordinary
+  - Declaration-pattern viability now uses restricted ordinary
     initialization. Non-reference declarations admit same-type, base-class,
     and restricted pointer relationships; reference declarations require a
     reference-compatible subject.
-  - A pattern that cannot apply to any value in the subject's domain remains
-    ill-formed. A case that is applicable but redundant because of preceding
-    cases is now well-formed, with a recommended warning.
-  - Fixed declaration pattern packs may now be named.
+  - Integral and enumeration value patterns use the operand compatibility
+    rules of built-in three-way comparison and compare with built-in equality.
+    For example, `true` does not match an `int`, and an enumeration cannot be
+    matched by an integer label. Enumeration patterns do not invoke a
+    user-defined `operator==`.
+  - Predicate patterns use a parenthesized callee, suppressing
+    argument-dependent lookup.
+  - Declaration-versus-expression disambiguation follows the outer declarator
+    form, preserving `T(x)` and `auto((x))` as expression patterns.
+  - Redundant cases are now well-formed, with a recommended warning.
+    Non-viable patterns remain ill-formed. A dependent pattern is rejected
+    when no substitution can make it viable.
+  - Usefulness now directs case instantiation using cumulative coverage,
+    rather than only individual irrefutable cases.
+  - Fixed declaration pattern packs may now be named, as in `[Types... values]`.
+  - Pattern conditions protect the successful controlled statement from
+    control-flow entry that would bypass matching and initialization.
   - Match cases retain source-order priority, but matching operations may be
     reordered and equivalent occurrences may be coalesced. Their results may
     be retained across guard evaluation.
+  - Variant's `alternative_traits` discriminator now converts to `size_t`,
+    making it usable as a `switch` condition while retaining `.index<I>`.
+  - Consolidate on *pattern viability* rather than alternating between
+    viability and applicability. Viability is distinct from runtime matching,
+    usefulness, and the validity of selected initialization.
+  - Clarify phrasing and examples throughout, including protocol descriptions,
+    required and residual domains, and implementation notes.
 
 ## R5 → R6 {- .unlisted #r5-to-r6}
   - Prior to the Hagenberg meeting in January 2025, further implementation
