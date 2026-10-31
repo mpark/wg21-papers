@@ -658,9 +658,7 @@ future work.
 
 # Design Overview
 
-## Matching Constructs
-
-The proposal introduces several contexts where pattern matching can be used.
+The proposal introduces several constructs where pattern matching takes place.
 
 Let's start with `match` selection, both *statement* and *expression* forms:
 
@@ -686,31 +684,21 @@ auto result = match ($subjects$) {
 
 :::
 
-While a *match-selection-statement* can simply have a *compound-statement* on
-the right of `=>`, a *match-selection-expression* continues to rely on
-[@P2806R5]{.title} to do *statement* things.
+Match cases have source-order priority. A match selection selects the first
+case whose pattern and guard, if present, succeed. Each subject expression is
+evaluated exactly once. Cases do not fall through. Every match selection must
+be exhaustive. Redundant cases are allowed, but implementations are encouraged
+to warn on them.
 
-A match selection gives its cases source-order priority and selects the first
-case whose pattern and guard, if present, succeed. Every match selection must
-be exhaustive.
-
-A single top-level subject expression supplies the initial current subject
-directly. Multiple subject expressions form an unnamed product type,
-and a decomposition pattern matches its elements. Each subject expression is
-evaluated exactly once.
-
-A *match-test-expression* is a boolean expression that is ill-formed if the
-pattern is not viable for the subject(s), as described in
-[Viability, Exhaustiveness, and Usefulness]. Otherwise, it produces `true` if
-the pattern matches and `false` if it does not. It does not introduce names
-into the enclosing scope.
+A *match-test-expression* is a boolean expression that produces `true` if the
+pattern matches and `false` if it does not.
 
 ```cpp
 match($subjects$, case $pattern$)
 ```
 
-It can be used wherever boolean expressions can be used, including
-`requires` clauses.
+It is ill-formed if the pattern is not viable for the subject(s). It does not
+introduce names outside of its own scope.
 
 A *pattern-condition* is a *condition* and can appear anywhere *condition* can
 appear, except within a `switch`:
@@ -743,9 +731,9 @@ for ($init$; case $P$ = $E$; $incr$) {
 
 :::
 
-A pattern condition has the same matching result as `match($E$, case $P$)`,
-but keeps its hidden subject alive through the enclosing control statement,
-including an `else` branch.
+A pattern condition has the same matching semantics as
+`match($subject$, case $pattern$)`, but keeps the subject alive through the
+enclosing control statement.
 
 Pattern conditions participate in a left-to-right `&&` chain. Names introduced
 by one condition are available to subsequent conditions and the successful
@@ -758,43 +746,7 @@ if (case { const Directory& directory } = search(path) &&
 }
 ```
 
-## Pattern Forms
-
-Patterns compose recursively. Decomposition supplies structural elements, and
-braces request alternative projection. The matching rules are described in
-[Patterns].
-
-An ordinary declaration introduces a new name. Without one, an identifier
-names an existing entity:
-
-```cpp
-constexpr int x = 42;
-
-match (E) {
-  case x =>      // match against existing `x`
-  case auto x => // introduce a new `x`
-}
-```
-
-Declaration patterns do not accept general implicit conversion. They use the
-restricted relationships described in [Declaration Patterns]. Matching and
-initialization are distinct: a named declaration initializes only after the
-complete pattern matches, while an omitted-name declaration checks that
-initialization without performing it.
-
-A decomposition pattern uses the structured-binding protocol to obtain its
-elements. The language directly supplies the matching domains for `bool`,
-enumeration types, and pointers, including nullable projection for pointers.
-For class types, braces explicitly request an alternative interface whose
-states, selectors, and projections are described by
-`std::alternative_traits`.
-
-A decomposition pattern can contain one arity-inferred pack. A bare `...`
-ignores the corresponding elements, while `auto&& ...elements` introduces a
-local pack name. An enclosing expression or type pack instead expands to a
-fixed number of subpatterns.
-
-The proposed pattern forms are:
+The patterns proposed are:
 
 | Pattern | Form | Purpose |
 |:---------------:|:----------------------------:|-----------------------------------------|
@@ -803,13 +755,76 @@ The proposed pattern forms are:
 | Declaration | `T x`<br>`C auto x`<br>`T`<br>`auto [x, y]`<br>`auto [...xs]` | Test restricted declaration matching semantics, optionally introducing names |
 | Parenthesized | `(P)` | Group a pattern |
 | Or | `P1 or P2` | Match either pattern |
-| Decomposition | `[]`<br>`[P@~1~@, /* ... */, P@~n~@]`<br>`[P@~1~@, ..., P@~n~@]`<br>`[P@~1~@, auto&& ...xs, P@~n~@]`<br>`[P@~1~@, auto&& ..., P@~n~@]`<br>`[xs...]`<br>`[Ts...]`<br>`[Ts... xs]` | Recursively match structural elements, optionally consuming or expanding a pack |
+| Decomposition | `[]`<br>`[P@~1~@, /* ... */, P@~n~@]`<br>`[P@~1~@, ..., P@~n~@]`<br>`[P@~1~@, auto&& ...xs, P@~n~@]`<br>`[P@~1~@, auto&& ..., P@~n~@]`<br>`[xs...]`<br>`[Ts...]` | Recursively match structural elements, optionally consuming or expanding a pack |
 | Alternative | `{ P }`<br>`{}`<br>`{ T: P }`<br>`{ C: P }`<br>`{ .name: P }`<br>`{ .name }` | Select an alternative and optionally project it |
+
+Patterns are constructed recursively via composition. There are primary patterns
+such as value pattern (e.g. `0`) and declaration pattern (e.g. `int x`), and
+compound patterns such as decomposition pattern (e.g. `[P1, P2]`) that have
+nested sub-patterns. For example, `[0, int x]` is a decomposition pattern with
+nested sub-patterns `0` and `int x`.
+
+Every pattern matches against its current subject. A single top-level subject
+expression supplies the initial current subject directly. Multiple subject
+expressions form an unnamed product, matched by a decomposition pattern.
+
+A decomposition pattern obtains the elements of its current subject through
+the structured-binding protocol and passes each to the corresponding nested
+sub-pattern. As an example, for a `std::pair` with elements
+`a` and `b` matched by pattern `[0, int x]`, the current subject of `[0, int x]`
+is the whole `std::pair`, while the current subject of sub-pattern `0` is `a`,
+and for `int x` it is `b`.
+
+An alternative pattern `{ P }` selects an alternative and passes its
+projection as the current subject for `P`. For class types, this uses
+`std::alternative_traits`, which describes their states and projections.
+Parentheses and or-patterns do not change the current subject.
+
+For example:
+
+```cpp
+std::optional<std::pair<int, int>> point = /* ... */;
+
+match (point) {
+  case { [0, int y] } => on_y_axis(y);
+  case { [int x, int y] } if (x == y) => on_diagonal(x);
+  case {} => no_point();
+  case _ => elsewhere();
+}
+```
+
+In the first case, the braces project the `pair` when the `optional` is engaged,
+and `[0, int y]` matches against that `pair`. `{}` matches the empty state, and
+`_` handles any remaining value.
+
+A declaration pattern always applies directly to its current subject. It does
+not implicitly project an alternative. Thus `case auto&& whole` binds
+the `optional` itself, while `case { auto&& payload }` binds the `pair` when
+it is engaged.
+
+Name introduction follows ordinary declaration syntax. `case x` refers to an
+existing entity, while `case auto x` introduces a new `x`. Named declarations
+initialize only after the complete pattern matches. Their names are
+available in the guard and handler. Declaration matching uses restricted
+ordinary initialization rather than general implicit conversion.
+Declaration patterns can also match polymorphic class subjects using
+`dynamic_cast` semantics.
+
+The language directly supplies the matching domains for `bool`, enumeration
+types, and pointers, including nullable projection for pointers.
+
+An alternative pattern such as `{ auto x }` can give `x` different types for
+different alternatives. Its case can be instantiated separately for those
+alternatives. Coverage from earlier cases can determine which instantiations
+are needed.
+
+The following sections describe [Pattern Matching Constructs], [Patterns], and
+[The `alternative_traits` Protocol]. [Match Semantics] covers checking, case
+instantiation, and evaluation.
 
 # Pattern Matching Constructs
 
-This section describes the constructs that contain patterns, their handlers
-and guards, and their interaction with ordinary C++ syntax and control flow.
+This section describes the constructs that contain patterns.
 
 ## Syntax Overview
 
