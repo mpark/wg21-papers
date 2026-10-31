@@ -284,9 +284,9 @@ the same value. Exhaustiveness checking is required in general. For an `enum`,
 every enumerator value is required to be covered. Therefore, omitting
 the `Coin::Quarter` case is ill-formed:
 
-```text
-error: match expression is not exhaustive; example of a missing case: Quarter
-```
+> ```text
+> error: match expression is not exhaustive; example of a missing case: Quarter
+> ```
 
 Next, let's consider a dice roll example from the same chapter:
 
@@ -304,7 +304,7 @@ void take_turn() {
 ```
 
 This is a `match` statement, so the statement in the selected handler is
-executed. `dice_roll()` is evaluated exactly once. The *declaration pattern*
+executed. `dice_roll()` is evaluated exactly once. A *declaration pattern*
 (`int roll`) matches every other result and initializes `roll` from it.
 
 If every result other than `3` or `7` should simply be re-rolled, its value can
@@ -481,7 +481,7 @@ available in subsequent conditions and the successful branch.
 
 ## Customizing an Alternative Type
 
-The standard-library types above use `std::alternative_traits`. Your custom
+The standard-library types above opt into `std::alternative_traits`. Your custom
 library alternative type can opt into the same protocol. Suppose
 `my::Result<T, E>` has an expected-like interface with `has_value()`, `value()`,
 and `error()`.
