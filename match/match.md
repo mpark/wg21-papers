@@ -4329,7 +4329,7 @@ The intended wording work includes the lexical treatment of `=>`, match
 selection statements and expressions, pattern grammar and semantics, scope,
 dependence, constant evaluation, and the `alternative_traits` library protocol.
 
-# Appendix A: Comparison Tables {#comparison-tables}
+# Appendix A: Four-Way Comparison Tables {#comparison-tables}
 
 The following are 4-way comparison tables between C++23, [@P1371R3], [@P2392R3],
 and this paper.
