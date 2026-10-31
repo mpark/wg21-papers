@@ -227,8 +227,6 @@ These are working notes for R7 and are not part of the proposal.
   language facility, including [Standard Specializations].
 - Address the concerns raised by P3619R1 in [Design Decisions and Alternatives
   Considered].
-- Review the contexts that support patterns in [Pattern Matching Constructs],
-  using Rust as a baseline, and explain the intentional omissions.
 - Complete the `alternative_traits` contract: lookup, header availability, a
   feature-test macro, malformed-specialization diagnostics, practical limits
   on the extent of `alternatives`, defaults for omitted members, discriminator
@@ -4016,6 +4014,52 @@ if (case int value = input)
 
 bool is_integer = match(input, case int);
 ```
+
+## Pattern Contexts
+
+Rust uses patterns in selections, conditions, declarations, function and
+closure parameters, and iteration. The following table compares those
+contexts with this proposal and existing C++ facilities:
+
+| Context | Rust | C++ with this proposal |
+|---------|------|------------------------|
+| Selection | `match $E$ { /* cases */ }` | `match ($E$) { /* cases */ }` as a statement or expression |
+| Boolean test | `matches!($E$, $P$)` macro | `match($E$, case $P$)` |
+| Conditional binding | `if let $P$ = $E$`, `while let $P$ = $E$` | Pattern conditions in `if`, `while`, and traditional `for` |
+| Unconditional binding | `let $P$ = $E$;` | Ordinary declarations and structured bindings |
+| Binding with an early exit | `let $P$ = $E$ else { /* exits */ };` | No standalone counterpart in this proposal |
+| Function and closure parameters | Irrefutable patterns | Ordinary parameters, with structured bindings in the body |
+| Iteration | `for $P$ in $E$` | Range-based `for` declarations, including structured bindings |
+
+Rust requires irrefutable patterns in ordinary `let` declarations, parameters,
+and `for` bindings. These are primarily used to introduce names and decompose
+values. C++ already has declarations and structured bindings for those uses:
+
+```cpp
+auto&& [first, second] = pair;
+
+for (auto&& [key, value] : entries)
+  use(key, value);
+```
+
+[Pattern Matching Constructs] covers selections, tests, and conditional
+bindings. We could also allow standalone pattern declarations:
+
+```cpp {.not_proposed}
+case P = E;
+case P = E else S;
+```
+
+The main use case for `case P = E;` is destructuring, which is already
+supported by structured bindings. Allowing arbitrary patterns here would also
+require us to decide what happens when a pattern fails.
+
+`case P = E else S;` provides an early exit when the pattern fails, while
+keeping the declared names in scope afterward. A pattern condition instead
+keeps its names within the successful controlled statement and later `&&`
+conditions. The standalone form is useful, but a bit more novel in C++. It can
+be added later, so we leave it out of this revision. Both standalone forms are
+implemented as prototype extensions, but are not proposed here.
 
 # Deferred Extensions
 
