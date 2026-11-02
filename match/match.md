@@ -1480,10 +1480,10 @@ are available to its guard and handler; they are not inputs to other parts of
 the pattern.
 
 Declaration patterns use ordinary declarator forms, with one rule preserving
-functional casts as expression patterns. If the outer $noptr-declarator$ is a
+functional casts as expression patterns. If the outer `$noptr-declarator$` is a
 terminal `( $ptr-declarator$ )`, the result is an expression pattern. An outer
 function or array suffix instead makes it declaration syntax. Parentheses
-within the enclosed $ptr-declarator$ are handled recursively:
+within the enclosed `$ptr-declarator$` are handled recursively:
 
 ```cpp
 case T(value)          // expression pattern
@@ -1494,9 +1494,8 @@ case R ((*function))() // declaration pattern
 case T (&array)[N]     // declaration pattern
 ```
 
-If both interpretations remain possible, declaration-pattern syntax takes
-precedence. A functional cast such as `auto(R(*function)())` forces the
-expression interpretation.
+A functional cast such as `auto(R(*function)())` forces the expression
+interpretation.
 
 The resulting declaration must declare a variable. For example,
 `T(function)()` has declaration syntax but is ill-formed because it declares a
@@ -1508,77 +1507,6 @@ discussed further in
 At the start of a pattern, `[[` is interpreted as an attribute only when a
 complete attribute can continue a declaration pattern. Otherwise, it begins
 a nested decomposition pattern.
-
-### Static Declaration Matching
-
-Viability is based on ordinary declaration initialization. Let `$E$` be the
-current subject expression and `$D$` the declared type after placeholder
-deduction, if any. The declaration is statically viable when the implicit
-conversion sequence for copy-initializing `$D$` from `$E$` is a standard
-conversion sequence and one of the following holds:
-
-1. `$D$` is not a reference type and, after removing top-level cv-qualifiers,
-   `$D$` is the subject type or an unambiguous base class of the subject type.
-2. `$D$` is not a reference type, `$D$` and the subject are pointer or
-   pointer-to-member types, and, after any lvalue-to-rvalue conversion, they
-   differ only by the permitted standard pointer, function-pointer, and
-   qualification conversions.
-3. `$D$` is a reference type and the type referred to by `$D$` is
-   reference-compatible with the type of `$E$` as specified in [dcl.init.ref].
-
-Base-class accessibility and initialization are checked in the context of the
-match. Requiring the subject itself to have pointer or pointer-to-member type
-excludes conversion from `std::nullptr_t`, integer null pointer constants,
-array-to-pointer conversion, and function-to-pointer conversion. To match a
-null pointer value, use `nullptr`. Arrays and functions can be captured by
-corresponding reference declarations.
-
-Promotions, numeric conversions, and user-defined conversions do not make a
-declaration pattern viable.
-
-As with value patterns, a `bool` declaration matches a `bool`, not an `int`.
-Allowing conversions would let an earlier `bool` declaration take a value
-intended for a later `int` declaration:
-
-```cpp
-match (int_value) {
-  case bool value => use(value); // error: bool is not viable for int
-  case true       => use_true(); // error: true is not viable for int
-  case int value  => use(value);
-}
-```
-
-Reference compatibility prevents a reference declaration from binding to a
-temporary produced by converting the subject to another type. It does not
-prevent materializing a prvalue of the same type. A non-reference declaration
-instead produces a new value.
-
-The permitted pointer conversions keep pointing to the same object, a base
-subobject, or the same function. They do not invoke user code. For example, an
-`int*` subject can match a `const int*` declaration:
-
-```cpp
-match (pointer) {
-  case const int* value => use(value);
-}
-```
-
-As with a base-class declaration, a broader pointer declaration can make a
-later narrower declaration redundant.
-
-The derived-to-base case does not require a polymorphic type or perform a
-runtime test. A reference binds the base subobject. A non-reference declaration
-copies or moves that subobject and may slice. Accessibility is checked in the
-context of the match, as it is for ordinary initialization.
-
-If static declaration matching does not apply, a class declaration can use the
-runtime polymorphic cast described in [Polymorphic Class Matching]. Runtime
-polymorphic matching does not apply to pointer declarations. Matching a
-pointee requires the explicit nullable projection described in
-[Pointer Subjects].
-
-Cases remain source-ordered. Declaration viability does not rank or reorder
-cases as an overload set would.
 
 ### Viability Versus Failed Initialization
 
@@ -1658,9 +1586,100 @@ case std::integral auto
 case std::ranges::viewable_range auto&&
 ```
 
-### Polymorphic Class Matching
+### Static Declaration Matching
 
-#### Static Matching and Runtime Polymorphic Casts
+Declaration-pattern viability has more restrictive conditions than ordinary
+declaration initialization. The high-level motivation is that we do not want
+`case { bool b }` to match all of the alternatives of
+`variant<bool, int, float>`. The proposed rule takes inspiration from exception
+handler matching semantics in [except.handle]/3. For example:
+
+```cpp
+try {
+  throw 42;
+} catch (bool b) {
+  // ...
+} catch (int i) {
+  // ...
+}
+```
+
+Even though `bool b = 42;` would be well-formed, the `catch (bool b)` does not
+catch the `42`. Since exception handler matching is also first-match, allowing
+arbitrary implicit conversions would mean that earlier handlers end up matching
+more than intended. As such, we introduce similar restrictions to declaration
+patterns.
+
+Let `$E$` be the current subject expression and `$D$` the declared type after
+placeholder deduction, if any. The declaration is statically viable when the
+implicit conversion sequence for copy-initializing `$D$` from `$E$` is a
+standard conversion sequence and one of the following holds:
+
+1. `$D$` is not a reference type and, after removing top-level cv-qualifiers,
+   `$D$` is the subject type or an unambiguous base class of the subject type.
+2. `$D$` is not a reference type, `$D$` and the subject are pointer or
+   pointer-to-member types, and, after any lvalue-to-rvalue conversion, they
+   differ only by the permitted standard pointer, function-pointer, and
+   qualification conversions.
+3. `$D$` is a reference type and the type referred to by `$D$` is
+   reference-compatible with the type of `$E$` as specified in [dcl.init.ref].
+
+Base-class accessibility and initialization are checked in the context of the
+`match`. Requiring the subject itself to have pointer or pointer-to-member type
+excludes conversion from `std::nullptr_t`, integer null pointer constants,
+array-to-pointer conversion, and function-to-pointer conversion. To match a
+null pointer value, use `nullptr`. Arrays and functions can be captured by
+corresponding reference declarations.
+
+For example:
+
+```cpp
+int* pointer = nullptr; // ordinary initialization permits conversion
+
+match (nullptr) {
+  case int* p => use(p); // not viable: subject is std::nullptr_t
+}
+```
+
+Promotions, numeric conversions, and user-defined conversions do not make a
+declaration pattern viable.
+
+Reference compatibility prevents a reference declaration from binding to a
+temporary produced by converting the subject to another type. It does not
+prevent materializing a prvalue of the same type. A non-reference declaration
+instead produces a new value.
+
+```cpp
+match (42) {
+  case const int& r => use(r); // binds to the materialized int
+}
+```
+
+The permitted pointer conversions keep pointing to the same object, a base
+subobject, or the same function. They do not invoke user code. For example,
+a `const int*` declaration pattern can match an `int*` subject:
+
+```cpp
+match (pointer) {
+  case const int* value => use(value);
+}
+```
+
+As with a base-class declaration, a broader pointer declaration can make a
+later narrower declaration redundant.
+
+The derived-to-base case does not require a polymorphic type or perform a
+runtime test. A reference binds the base subobject. A non-reference declaration
+copies or moves that subobject and may slice. Accessibility is checked in the
+context of the match, as it is for ordinary initialization.
+
+If static declaration matching does not apply, a class declaration can use the
+runtime polymorphic cast described in [Polymorphic Class Matching].
+
+Cases remain source-ordered. Declaration viability does not rank or reorder
+cases as an overload set would.
+
+### Polymorphic Class Matching
 
 A declaration pattern first tries [Static Declaration Matching]. If that
 does not apply, a class declaration can apply the corresponding pointer-form
@@ -1723,89 +1742,10 @@ requesting a runtime polymorphic cast.
 
 Matching a type directly is discussed as a possible future extension.
 
-#### Pointer Subjects
-
-The same rule does not work for pointers. Consider an ordinary generic pointer
-match:
-
-```cpp
-template <class T>
-int classify(T* pointer) {
-  return match (pointer) {
-    case int* value    => value ? 1 : 2;
-    case double* value => value ? 3 : 4;
-    case _             => 5;
-  };
-}
-```
-
-This is static dispatch on `T`. `classify<int>(nullptr)` should select the
-`int*` case and initialize `value` with a null pointer.
-
-Now what should `Circle*` mean when the subject is a `Shape*`?
-`dynamic_cast<Circle*>(pointer)` returns null when the object is not a `Circle`,
-but it also returns null when `pointer` is null. If that is a successful match,
-we enter a `Circle*` case with a null pointer. If it is a failed match, an exact
-`Shape*` declaration and a runtime-checked `Circle*` declaration behave
-differently for null despite looking the same. In a template, the same pattern
-could also change from static type selection to a nullable runtime test as `T`
-changes.
-
-We therefore do not perform runtime polymorphic casts from one pointer type to
-another. Pointer declarations admit the restricted static pointer relationships
-in [Static Declaration Matching], but no runtime downcast. To test the
-pointee's runtime type, first match the non-null state and then match the
-resulting object:
-
-```cpp
-void draw_shape(Shape* shape) {
-  match (shape) {
-    case {}                  => null_shape();
-    case { Circle& circle }  => draw_circle(circle);
-    case { Square& square }  => draw_square(square);
-    case { Shape& unknown }  => draw_unknown(unknown);
-  }
-}
-```
-
-The braces above only perform the pointer's null/non-null projection.
-`Circle&` then matches the resulting `Shape&` using the ordinary polymorphic
-object rule. There is no special pointer-plus-polymorphism operation. If the
-pointer is itself stored inside another alternative type, both projections are
-visible:
-
-```cpp
-variant<Shape*, int> value;
-
-match (value) {
-  case { { Circle& circle } } => draw_circle(circle);
-  case { int integer }        => use(integer);
-  case _                      => other();
-}
-```
-
-For a known `Shape*` subject, a bare `Circle*` pattern is not viable and is
-ill-formed. In a dependent match it follows the general rules for a
-potentially viable declaration case; it does not acquire runtime
-polymorphic pointer-cast semantics:
-
-```cpp
-template <class T>
-int match_pointer(T* pointer) {
-  return match (pointer) {
-    case Circle* circle => 1;
-    case _              => 0;
-  };
-}
-
-Circle circle;
-match_pointer(&circle);                    // 1: exact Circle* declaration
-match_pointer(static_cast<Shape*>(&circle)); // 0: no polymorphic pointer cast
-```
-
-This difference is intentional. `{ Circle& }` asks about the runtime type of
-the pointee. References do not have the null problem because a reference always
-denotes an object.
+Pointer declaration patterns do not perform runtime polymorphic casts.
+To match a pointee's runtime type, first use an alternative pattern to project
+the non-null state and then apply a class declaration pattern to that object.
+[Pointer Subjects] discusses this choice.
 
 ## Parenthesized Pattern
 
@@ -3896,7 +3836,7 @@ then inspected in the handler. We did not find enough examples of this to
 justify putting braces on every polymorphic case.
 
 The strongest argument for braces remains the generic example in
-[Static Matching and Runtime Polymorphic Casts], where a small type change
+[Polymorphic Class Matching], where a small type change
 introduces a runtime cast.
 
 This may seem surprising, but a generic use of `typeid` similarly changes from
@@ -3915,6 +3855,90 @@ get_type_info(static_cast<Shape&>(another_circle));  // dynamic type `Circle`
 
 We think the direct object syntax is worth that cost. Compiler diagnostics and
 AST dumps should still make the runtime cast visible.
+
+### Pointer Subjects
+
+Applying runtime polymorphic matching to pointer declarations would make null
+pointers difficult to interpret. Consider an ordinary generic pointer match:
+
+```cpp
+template <class T>
+int classify(T* pointer) {
+  return match (pointer) {
+    case int* value    => value ? 1 : 2;
+    case double* value => value ? 3 : 4;
+    case _             => 5;
+  };
+}
+```
+
+This is static dispatch on `T`. `classify<int>(nullptr)` should select the
+`int*` case and initialize `value` with a null pointer.
+
+Now what should `Circle*` mean when the subject is a `Shape*`?
+`dynamic_cast<Circle*>(pointer)` returns null when the object is not a `Circle`,
+but it also returns null when `pointer` is null. If that is a successful match,
+we enter a `Circle*` case with a null pointer. If it is a failed match, an exact
+`Shape*` declaration and a runtime-checked `Circle*` declaration behave
+differently for null despite looking the same. In a template, the same pattern
+could also change from static type selection to a nullable runtime test as `T`
+changes.
+
+We therefore do not perform runtime polymorphic casts from one pointer type to
+another. Pointer declarations admit the restricted static pointer relationships
+in [Static Declaration Matching], but no runtime downcast. To test the
+pointee's runtime type, first match the non-null state and then match the
+resulting object:
+
+```cpp
+void draw_shape(Shape* shape) {
+  match (shape) {
+    case {}                  => null_shape();
+    case { Circle& circle }  => draw_circle(circle);
+    case { Square& square }  => draw_square(square);
+    case { Shape& unknown }  => draw_unknown(unknown);
+  }
+}
+```
+
+The braces above only perform the pointer's null/non-null projection.
+`Circle&` then matches the resulting `Shape&` using the ordinary polymorphic
+object rule. There is no special pointer-plus-polymorphism operation. If the
+pointer is itself stored inside another alternative type, both projections are
+visible:
+
+```cpp
+variant<Shape*, int> value;
+
+match (value) {
+  case { { Circle& circle } } => draw_circle(circle);
+  case { int integer }        => use(integer);
+  case _                      => other();
+}
+```
+
+For a known `Shape*` subject, a bare `Circle*` pattern is not viable and is
+ill-formed. In a dependent match it follows the general rules for a
+potentially viable declaration case; it does not acquire runtime
+polymorphic pointer-cast semantics:
+
+```cpp
+template <class T>
+int match_pointer(T* pointer) {
+  return match (pointer) {
+    case Circle* circle => 1;
+    case _              => 0;
+  };
+}
+
+Circle circle;
+match_pointer(&circle);                    // 1: exact Circle* declaration
+match_pointer(static_cast<Shape*>(&circle)); // 0: no polymorphic pointer cast
+```
+
+This difference is intentional. `{ Circle& }` asks about the runtime type of
+the pointee. References do not have the null problem because a reference always
+denotes an object.
 
 ## Strict Viability
 
@@ -4329,7 +4353,7 @@ selected subject can occur in both subtrees, so some tests may be duplicated.
 ### Dynamic Class Matching
 
 Polymorphic declaration patterns use the `dynamic_cast` semantics described in
-[Static Matching and Runtime Polymorphic Casts], including open-world derived
+[Polymorphic Class Matching], including open-world derived
 classes and pointer adjustment. Reuse follows [Matching Operation Order and
 Reuse]. The compiler can reuse repeated targets, derive a base match from a
 successful more-derived match, use final-class fast paths, and employ LTO or
