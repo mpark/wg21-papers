@@ -1185,14 +1185,6 @@ start at '@`match`@'
    `- anything else => ordinary parsing
 ```
 
-This algorithm is more complicated to describe than it is likely to be in
-practice. An audit of Chromium and LLVM found no types named `match` and
-hundreds of functions named `match`, mostly in LLVM matching libraries. It
-found no existing statement or expression using either match-shaped
-`match (...) {` or `match (...) ->` syntax. The ordinary function calls leave
-the classifier before reaching the difficult declaration and trailing-result
-type cases.
-
 The tentative declarator branch preserves existing declarations such as:
 
 ```cpp
@@ -4283,6 +4275,12 @@ cases, restores the parser, and then runs either the ordinary parser or the
 match-selection parser normally. Diagnostic recovery can recognize additional
 ill-formed match-shaped input without changing the classification of valid
 programs.
+
+An audit of Chromium and LLVM found no types named `match` and hundreds of
+functions named `match`, mostly in LLVM matching libraries. It found no
+existing statement or expression using `match (...) {` or `match (...) ->`
+syntax. Ordinary function calls leave the classifier before its tentative
+declarator and trailing-result-type branches.
 
 The token following the subject can be arbitrarily far from `match`. C++
 already requires this kind of decision for declarations and expressions:
