@@ -941,7 +941,7 @@ before the first case. Each declaration is in scope from its point of
 declaration through the remainder of the match selection. A case does not make
 its names visible to the preamble or to another case.
 
-No semicolon follows the closing brace of a match selection statement.
+A match selection statement does not require a trailing semicolon.
 Parentheses force expression form where a match selection statement would
 otherwise be recognized.
 
@@ -983,11 +983,25 @@ For a match selection expression, a handler can be:
 - a jump statement where that action is valid
 - a non-returning expression, written `not return expression`.
 
-The participating handlers need a consistent result type unless an explicit
-trailing return type is provided. A null handler and a successful
-`static_assert` handler contribute `void`. A jump statement, a `not return`
-handler, and a handler discarded by `match constexpr` do not participate in
-result type deduction.
+Result-type deduction follows function return-type deduction. Omitting the
+trailing return type is equivalent to specifying `-> auto`. Each participating
+handler must deduce the same type. Other placeholders, such as `decltype(auto)`,
+use their ordinary deduction rules. A braced initializer cannot deduce a
+placeholder result type.
+
+A null handler and a successful `static_assert` handler contribute `void` and
+require a `void` result.
+A jump statement, a `not return` handler, and a handler discarded by
+`match constexpr` do not participate in result-type deduction. If no handler
+participates, an omitted result type defaults to `void`.
+
+With an explicit non-placeholder result type other than `void`, each yielding
+handler must initialize that type as a return statement would. The handler
+expressions need not have the same type. With `-> void`, expression handlers
+are evaluated as discarded-value expressions.
+
+The match expression's value category follows its result type, as for a
+function call.
 
 A `not return` handler evaluates its expression as a discarded-value
 expression. If the expression completes normally, the behavior is undefined.
@@ -1017,8 +1031,8 @@ constexpr auto result(auto value) {
 }
 ```
 
-The assertion is instantiated only for a specialization not matched by any of
-the earlier cases.
+The last case is instantiated only for types not covered by the earlier
+declaration patterns, as described in [Case-Local Instantiation].
 
 ## Guards
 
@@ -1035,9 +1049,9 @@ match (value) {
 ```
 
 A name introduced by a match case's pattern is visible in that case's guard
-and handler, and nowhere else. A guard init-statement declaration is visible in
-the guard condition and selected handler. Neither kind of declaration is
-visible in later cases.
+and handler, but not in another case. Declarations introduced by the guard's
+init-statement or condition follow ordinary `if` scope rules and are visible
+in the selected handler.
 
 The coverage rules for guarded cases are described in
 [Viability, Exhaustiveness, and Usefulness].
@@ -1057,10 +1071,11 @@ The `case` keyword marks the final comma-separated operand as a pattern rather
 than another subject. Pattern names are visible in the optional guard, but no
 names introduced by the test are visible outside it.
 
-A non-viable pattern makes the expression ill-formed rather than `false`. In a
-dependent context, viability is checked after substitution. [Strict Viability]
-discusses this choice and the corresponding use of a *requires-expression*
-for detection.
+Single-pattern tests and pattern conditions require their patterns to be
+viable. A non-viable pattern makes the construct ill-formed rather than
+producing `false`. In a dependent context, viability is checked after
+substitution. [Strict Viability] discusses this choice and the corresponding
+use of a *requires-expression* for detection.
 
 For a well-formed test, each subject is evaluated once. The guard is evaluated
 only if the pattern matches. The result is `true` if the pattern and optional
@@ -1093,9 +1108,12 @@ if (ready && case [int x, int y] = first &&
 ```
 
 Names introduced by one pattern condition are visible in later `&&` elements
-and the successful controlled statement, but not in `else`. A pattern name is
-introduced before its subject is parsed, so using the same name on the right
-is self-initialization:
+and the successful controlled statement, but not in `else`. In a traditional
+`for`, they are also visible in the iteration expression. [Subject and Lifetime]
+describes the lifetimes of these declarations and their hidden subjects.
+
+A pattern name is introduced before its subject is parsed, so using the same
+name on the right is self-initialization:
 
 ```cpp
 int x = 42;
@@ -1112,13 +1130,20 @@ label inside it and bypass condition evaluation and initialization of its
 pattern names.
 
 The first top-level `=` separates the pattern from the subject. This is
-unambiguous because an assignment expression is not a pattern. An `if`
-pattern guard is not accepted in this form; a later `&&` condition is the
-guard.
+unambiguous because an unparenthesized assignment expression is not a pattern.
+The subject is an *inclusive-or-expression*, so a logical-and, logical-or,
+conditional, or assignment expression must be parenthesized:
 
-`if constexpr (case P = E)` also requires `P` to be viable. The `constexpr`
-applies after the condition has been formed; it does not turn the pattern
-condition into a detection operation.
+```cpp
+if (case auto value = (ready ? first : second) && valid(value))
+  use(value);
+```
+
+An `if` pattern guard is not accepted in this form. A subsequent `&&` condition
+serves the purpose of a pattern guard.
+
+`if constexpr (case P = E)` does not turn the pattern condition into a detection
+operation. The `constexpr` applies after the condition has been formed.
 
 ## Contextual Parsing of `match`
 
@@ -1177,11 +1202,9 @@ match first(0);
 match (second) { 0 };
 ```
 
-In an expression-only context, `match (subject) {` is unambiguously a
-match selection expression. At the start of a statement, the body introducer and
-ordinary lookup distinguish it from the declaration case. A single `[` does
-not commit to a `match` selection because a braced initializer can begin with a
-lambda. `[[` does commit because it begins an attributed match case.
+A single `[` does not commit to a match selection because a braced initializer
+can begin with a lambda. `[[` does commit because it begins an attributed
+match case.
 
 A trailing result type is recognized only when a complete *type-id* is
 followed by `{`. This preserves ordinary member access:
@@ -3022,9 +3045,17 @@ If usefulness cannot be determined, the guard and handler are instantiated.
   operation. The projection operation determines the category of its result.
 - In a match selection expression, the hidden subject survives through the containing
   full-expression. In a match statement it survives through the statement.
-- In a pattern condition, the hidden subject survives through the controlled
-  statement, including the `else` path, using the same lifetime-extension
-  machinery as condition variables and C++23 range-for.
+- In an `if` pattern condition, the hidden subject survives through the entire
+  `if` statement, including the `else` path.
+- In a `while` or traditional `for` pattern condition, it survives through the
+  current condition evaluation and iteration, including the `for` iteration
+  expression. It is destroyed before the next condition evaluation.
+
+Objects declared by pattern conditions remain alive through the successful
+controlled statement and any `for` iteration expression. If a later `&&`
+operand fails, those objects are destroyed before entering `else` or leaving
+the loop. This does not shorten the hidden subjects' lifetimes. Their names
+have the scope described in [Single-Pattern Tests and Pattern Conditions].
 
 A match case does not introduce a function-return boundary. A selected
 reference result is diagnosed according to how the complete match selection
