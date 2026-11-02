@@ -1307,107 +1307,40 @@ The choice of `_` is discussed in [Wildcard and Value Patterns].
 
 > | `$inclusive-or-expression$`
 
-An expression pattern `$E$` has to be constant: e.g. a literal, `constexpr`
-variable, enumerator, function name, or `constexpr` function object.
+Value and predicate patterns have the same form. The expression `$e$` is
+required to be a constant expression as specified in [expr.const], e.g. a
+literal, `constexpr` variable, enumerator, function, or `constexpr` function
+object.
+
+The grammar leaves top-level `or` to [Or-pattern] and reserves `and` for a
+future extension.
 
 Matching proceeds as follows:
 
-Let `$S$` be the current subject being matched, and let `$AT$` denote
-`std::alternative_traits<std::remove_cvref_t<decltype($S$)>>`:
+Let `$s$` be the current subject and `$S$` denote `std::remove_cvref_t<decltype($s$)>`.
 
-1. If `$AT$` has a member named `alternatives` and one or more of its elements
-   advertise constants with the same canonical type and value as `$E$`, the
-   value pattern `$E$` matches if `$AT$::index($S$)` identifies one of the
-   corresponding states. This does not evaluate `operator==`. See
-   [Advertised Value States].
-2. Otherwise, if `$S$` and `$E$` have integral or enumeration types,
+1. Let `$AT$` denote `std::alternative_traits<$S$>`. If `$AT$` is a complete type,
+   consult [Advertised Value States] for further conditions.
+   If `$e$` is not an advertised value, continue with the remaining steps.
+2. Otherwise, if both `$s$` and `$e$` are of integral or enumeration types,
    apply the operand compatibility rules of the built-in three-way comparison.
    If those rules accept the operands, compare the converted operands with
    built-in equality. Otherwise, the pattern is not viable.
-3. Otherwise, if `bool($S$ == $E$)` is well-formed, use that comparison.
-4. Otherwise, if `bool(($E$)($S$))` is well-formed, invoke `$E$` as a
-   predicate. The parenthesized callee suppresses argument-dependent lookup.
+3. Otherwise, if `$s$ == $e$` is well-formed and contextually convertible to
+   `bool`, use that comparison.
+4. Otherwise, if the *call-expression* `($e$)($s$)` is well-formed and
+   contextually convertible to `bool`, invoke `$e$` as a predicate.
+   The parenthesized `($e$)` intentionally suppresses argument-dependent lookup.
 5. Otherwise, the pattern is not viable.
 
-When `$AT$` has a member named `alternatives`, only the first step covers
-advertised states. A pattern handled by a later step can match at runtime but
-does not contribute coverage of an advertised state.
-
-The second step reuses the relevant built-in `<=>` rules. It does not evaluate
-an ordering operation or consider a user-defined `operator<=>`. It rejects a
-comparison between `bool` and any other integral type, as well as narrowing
-conversions. For example, `true` and `false` match only the `bool` alternative,
-not nonzero and zero values of the `int` alternative:
-
-```cpp
-using value = std::variant<bool, int, std::string>;
-
-int classify(const value& subject) {
-  return match (subject) {
-    case { true }                => 0;
-    case { false }               => 1;
-    case { int number }          => number;
-    case { const std::string& }  => 2;
-  };
-}
-```
-
-As with `switch`, this structural treatment is limited to integral and
-enumeration types. Floating-point patterns instead use ordinary equality in
-the third step.
-
-Enumeration constants are structural in the same sense as `switch` labels.
-Matching them uses built-in equality and does not call an overloaded
-`operator==`:
-
-```cpp
-enum mode { read, write };
-
-bool operator==(mode, mode); // not used by the structural cases
-
-int classify(mode current) {
-  return match (current) {
-    case read  => 0;
-    case write => 1;
-  };
-}
-```
-
-Unlike `switch`, an enumeration subject does not make an integer expression a
-structural label: even for an unscoped enumeration, `case 1` is not viable. The
-pattern must name an enumerator or explicitly produce a value of the enumeration
-type.
-
-A guard requests ordinary C++ equality, including a user-defined operation,
-explicitly:
-
-```cpp
-match (current) {
-  case mode value if (value == read) => selected();
-  case _                             => other();
-}
-```
-
-Equality has priority over invocation, so an ordinarily comparable constant
-remains a value pattern even if its type also has a call operator.
-
-```cpp
-constexpr int not_found = 404;
-
-match (status) {
-  case 200 => success();
-  case not_found => report_missing();
-  case _ => report_failure(status);
-}
-```
-
-A closed alternative type can advertise constants as its complete domain. The
-proposed specialization for `std::partial_ordering`, for example, makes this
-selection exhaustive without calling `operator==`:
+The proposed `alternative_traits` specialization for `std::partial_ordering`
+advertises its four values, making this `match` exhaustive without a wildcard.
+Without the specialization, these value patterns would invoke `operator==` which
+would not contribute to exhaustiveness coverage.
 
 ```cpp
 std::string_view describe(std::partial_ordering order) {
-  return match (order) {
+  return match (order) -> std::string_view {
     case std::partial_ordering::less => "less";
     case std::partial_ordering::equivalent => "equivalent";
     case std::partial_ordering::greater => "greater";
@@ -1416,16 +1349,79 @@ std::string_view describe(std::partial_ordering order) {
 }
 ```
 
-A named function can provide a predicate pattern:
+See [Advertised Value States] for how a specialization advertises constant
+values.
+
+The second step uses the operand compatibility and conversion rules of built-in
+`<=>`. It does not evaluate `<=>` or consider a user-defined overload. This
+rejects comparisons between `bool` and any other integral type, as well as
+comparisons involving narrowing conversions.
+
+For example, `true` and `false` match only the `bool` alternative.
+Neither pattern matches the `int` alternative:
 
 ```cpp
-constexpr bool is_at_least_five(int subject) {
-  return subject >= 5;
+using V = std::variant<bool, int>;
+
+int classify(const V& v) {
+  return match (v) {
+    case { true }       => 0;
+    case { false }      => 1;
+    case { int number } => number;
+  };
+}
+```
+
+In the second step, enumeration values are compared using built-in equality
+rather than an overloaded `operator==`. This behavior is consistent with
+`switch`. For example:
+
+```cpp
+enum Mode { Read, Write };
+
+bool operator==(Mode, Mode); // not used by switch or match
+
+int classify(Mode mode) {
+  return match (mode) {
+    case Read  => 0;
+    case Write => 1;
+  };
+}
+```
+
+A guard can be used to explicitly invoke `operator==`:
+
+```cpp
+match (mode) {
+  case Mode m if (m == Read) => selected();
+  case _                     => other();
+}
+```
+
+Unlike `switch`, an integer value pattern such as `case 1` cannot match against
+an `enum` subject. This is also a result of following the built-in `<=>` rules.
+The pattern must explicitly be a value of the enumeration type.
+
+Equality has priority over invocation, so an ordinarily comparable constant
+remains a value pattern even if its type also has a call operator.
+
+Value and predicate patterns can be used together. Here, `"--help"` is compared
+with `option` using ordinary equality, while `starts_with("-I")` produces a
+predicate:
+
+```cpp
+constexpr auto starts_with(std::string_view prefix) {
+  return [prefix](std::string_view text) {
+    return text.starts_with(prefix);
+  };
 }
 
-match (value) {
-  case is_at_least_five => large_value();
-  case _ => smaller();
+std::string_view classify(std::string_view option) {
+  return match (option) -> std::string_view {
+    case "--help" => "help";
+    case starts_with("-I") => "include path";
+    case _ => "other";
+  };
 }
 ```
 
@@ -1434,7 +1430,7 @@ reflection:
 
 ```cpp
 consteval std::string_view classify(std::meta::info entity) {
-  return match (entity) {
+  return match (entity) -> std::string_view {
     case std::meta::is_type => "type";
     case std::meta::is_variable => "variable";
     case std::meta::is_function => "function";
@@ -1445,8 +1441,9 @@ consteval std::string_view classify(std::meta::info entity) {
 static_assert(classify(^^int) == "type");
 ```
 
-A predicate does not contribute to exhaustiveness. The predicate object is a
-constant, but its result is generally a runtime property.
+Predicate patterns do not contribute to exhaustiveness, even when their
+invocation can be constant-evaluated. Only the pattern expression is required
+to be constant.
 
 The use of ordinary expressions for value and predicate patterns is discussed
 in [Wildcard and Value Patterns].
