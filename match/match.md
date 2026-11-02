@@ -37,6 +37,9 @@ highlighting:
   - Fixed declaration pattern packs may now be named, as in `[Types... values]`.
   - Pattern conditions protect the successful controlled statement from
     control-flow entry that would bypass matching and initialization.
+  - The grammar restores optional guards for single-pattern tests, as in
+    `match(value, case [int x, int y] if (x == y))`. This form was omitted
+    from R6's grammar but remained supported by the prototype.
   - Match cases retain source-order priority, but matching operations may be
     reordered and equivalent occurrences may be coalesced. Their results may
     be retained across guard evaluation.
@@ -475,7 +478,8 @@ if (case { const Directory& directory } = result) {
 the corresponding declaration could be initialized, but does not perform that
 initialization.
 
-A single-pattern test produces `bool` whether the pattern matched or not.
+A single-pattern test produces `bool` according to whether its pattern and
+optional guard succeed.
 A *pattern condition* additionally makes names introduced by its pattern
 available in subsequent conditions and the successful branch.
 
@@ -690,11 +694,11 @@ evaluated exactly once. Cases do not fall through. Every match selection must
 be exhaustive. Redundant cases are allowed, but implementations are encouraged
 to warn on them.
 
-A *match-test-expression* is a boolean expression that produces `true` if the
-pattern matches and `false` if it does not.
+A *match-test-expression* is a boolean expression that produces `true` if its
+pattern and optional guard succeed, and `false` otherwise.
 
 ```cpp
-match($subjects$, case $pattern$)
+match($subjects$, case $pattern$ $guard~opt~$)
 ```
 
 It is ill-formed if the pattern is not viable for the subject(s). It does not
@@ -869,7 +873,7 @@ $match-selection-expression$:
     }
 
 $match-test-expression$:
-    match( $expression-list$ , case $pattern$ )
+    match( $expression-list$ , case $pattern$ $guard~opt~$ )
 
 $match-preamble-declaration-seq$:
     $match-preamble-declaration$
@@ -1018,8 +1022,8 @@ the earlier cases.
 
 ## Guards
 
-A match case guard is introduced by `if` and requires parentheses. It can
-contain an init-statement and a condition declaration:
+A guard is introduced by `if` and requires parentheses. It can contain an
+init-statement and a condition declaration:
 
 ```cpp
 match (value) {
@@ -1043,21 +1047,30 @@ The coverage rules for guarded cases are described in
 A single-pattern test is:
 
 ```cpp
-match($expression-list$, case $pattern$)
+match($expression-list$, case $pattern$ $guard~opt~$)
 ```
 
 Its subject *expression-list* follows the rules in
 [Multiple Subjects].
 
 The `case` keyword marks the final comma-separated operand as a pattern rather
-than another subject. The expression does not introduce names outside of its
-own scope. A non-viable pattern makes the expression ill-formed rather
-than `false`. In a dependent context, viability is checked after substitution.
-[Strict Viability] discusses this choice and the corresponding use of a
-*requires-expression* for detection.
+than another subject. Pattern names are visible in the optional guard, but no
+names introduced by the test are visible outside it.
 
-For a well-formed test, the expression evaluates its subject once and produces
-`true` if the pattern matches and `false` otherwise.
+A non-viable pattern makes the expression ill-formed rather than `false`. In a
+dependent context, viability is checked after substitution. [Strict Viability]
+discusses this choice and the corresponding use of a *requires-expression*
+for detection.
+
+For a well-formed test, each subject is evaluated once. The guard is evaluated
+only if the pattern matches. The result is `true` if the pattern and optional
+guard succeed, and `false` otherwise.
+
+For example:
+
+```cpp
+bool equal = match(pair, case [int x, int y] if (x == y));
+```
 
 Pattern conditions can appear in `if`, `while`, and traditional `for`
 statements, but not in `switch`:
@@ -3971,18 +3984,18 @@ static_assert(!is_two_element<int>);
 ```
 
 Dependent match selections behave differently: a non-viable source case is
-discarded for that specialization. A well-formed single-pattern test is
+discarded for that specialization. A well-formed unguarded single-pattern test is
 therefore equivalent in value to:
 
 ```cpp
 (match (E) { case P => true; case _ => false; })
 ```
 
-An irrefutable pattern makes the alternative appear especially tempting. Once
-such a pattern is viable, it always matches, so `false` would uniquely mean
-that the pattern was not viable. The expression would nevertheless remain an
-evaluated context: `match(do_work(), case P)` evaluates `do_work()` and any
-required matching operations. By contrast,
+An unguarded test with an irrefutable pattern makes the alternative appear
+especially tempting. Once such a pattern is viable, it always matches, so
+`false` would uniquely mean that the pattern was not viable. The expression
+would nevertheless remain an evaluated context: `match(do_work(), case P)`
+evaluates `do_work()` and any required matching operations. By contrast,
 `requires { match(do_work(), case P); }` asks whether the test is well-formed
 and does not call `do_work()`. We retain that separation even for irrefutable
 patterns.
