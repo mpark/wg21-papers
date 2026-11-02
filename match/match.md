@@ -961,8 +961,8 @@ In a statement-or-expression context, the prefix introduces a match selection
 statement. Otherwise, in an expression context, it introduces a match
 selection expression.
 
-The parenthesized *expression-list* is non-empty. Its expressions supply the
-subject or subjects described in [Multiple Subjects].
+The parenthesized *expression-list* supplies the subject or subjects described
+in [Multiple Subjects].
 
 `match constexpr` requires the tests and guards used to select a case to be
 constant expressions and discards the unselected handlers. Its detailed rules
@@ -1081,12 +1081,15 @@ The coverage rules for guarded cases are described in
 A single-pattern test is:
 
 ```cpp
-match(E, case P)
+match($expression-list$, case $pattern$)
 ```
 
+Its subject *expression-list* follows the rules in
+[Multiple Subjects].
+
 The `case` keyword marks the final comma-separated operand as a pattern rather
-than another subject. The expression does not introduce names into the
-enclosing scope. A non-viable pattern makes the expression ill-formed rather
+than another subject. The expression does not introduce names outside of its
+own scope. A non-viable pattern makes the expression ill-formed rather
 than `false`. In a dependent context, viability is checked after substitution.
 [Strict Viability] discusses this choice and the corresponding use of a
 *requires-expression* for detection.
@@ -1224,7 +1227,11 @@ match(value, case a) * b // multiplication outside the test
 
 ## Multiple Subjects
 
-A match selection can match several subjects:
+Match selections and single-pattern tests can match several subjects. Their
+*expression-list* is non-empty. Each *initializer-clause* must be an
+*assignment-expression* rather than a *braced-init-list*.
+
+For example:
 
 ```cpp
 match (first, second) {
@@ -1232,11 +1239,13 @@ match (first, second) {
   case [int value, 0] => use(value);
   case [_, _]         => fallback();
 }
+
+bool both_zero = match(first, second, case [0, 0]);
 ```
 
 One subject is matched directly. Several subjects form an unnamed,
 exposition-only product whose elements preserve the original value categories.
-Every top-level case must therefore be a decomposition pattern, a
+The top-level pattern must therefore be a decomposition pattern, a
 structured-binding declaration pattern, or a wildcard, including grouped and
 or-pattern combinations of those forms. A declaration such as `auto whole`
 cannot expose the unnamed product type.
