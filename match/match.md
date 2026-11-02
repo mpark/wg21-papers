@@ -826,9 +826,8 @@ instantiation, and evaluation.
 
 This section describes the constructs that contain patterns.
 
-## Syntax Overview
-
-The following is a simplified, informal overview of the proposed grammar.
+The following is a simplified, informal overview of their grammar.
+The `$pattern$` grammar is described in [Patterns].
 
 First, the new constructs enter the existing grammar at these locations:
 
@@ -872,11 +871,9 @@ $match-selection-expression$:
 $match-test-expression$:
     match( $expression-list$ , case $pattern$ )
 
-$match-selection-expr-handler$:
-    $expr-or-braced-init-list~opt~$ ;
-    ! return $expression$ ;
-    $static_assert-declaration$
-    $jump-statement$
+$match-preamble-declaration-seq$:
+    $match-preamble-declaration$
+    $match-preamble-declaration-seq$ $match-preamble-declaration$
 
 $match-preamble-declaration$:
     $using-declaration$
@@ -888,52 +885,17 @@ $match-preamble-declaration$:
 
 $guard$:
     if ( $init-statement~opt~$ $condition$ )
+
+$match-selection-expr-handler$:
+    $expr-or-braced-init-list~opt~$ ;
+    ! return $expression$ ;
+    $static_assert-declaration$
+    $jump-statement$
 ```
 
-Next, the syntax of the recursively composable patterns:
-
-```cpp
-$pattern$:
-    $or-pattern$
-
-$or-pattern$:
-    $primary-pattern$
-    $or-pattern$ || $primary-pattern$
-
-$primary-pattern$:
-    _
-    $inclusive-or-expression$
-    $declaration-pattern$
-    ( $pattern$ )
-    [ $decomposition-pattern-list~opt~$ ]
-    { $pattern$ }
-    { $type-id$ : $pattern$ }
-    { $type-constraint$ : $pattern$ }
-    { $named-selector$ : $pattern$ }
-    { $named-selector$ }
-    { }
-
-$named-selector$:
-    . $identifier$
-    . $simple-template-id$
-
-$decomposition-pattern-list$:
-    $decomposition-pattern-element$
-    $decomposition-pattern-list$ , $decomposition-pattern-element$
-
-$decomposition-pattern-element$:
-    $pattern$
-    ...
-    $inclusive-or-expression$ ...
-```
-
-Within a decomposition pattern, a bare `...` infers its arity from the subject.
-A placeholder declaration pack such as `auto&& ...xs` or `auto&& ...` does the
-same. At most one arity-inferred element is permitted. An expression pack such
-as `xs...` instead expands into a fixed number of value patterns. An enclosing
-type pack `Ts` can similarly form a fixed number of declaration patterns.
-`Ts...` omits their names, while `Ts... xs` introduces the local pack `xs`. A
-declaration such as `Widget... xs` does not form a pack and is ill-formed.
+The subject *expression-list* is non-empty. Each *initializer-clause* must be
+an *assignment-expression* rather than a *braced-init-list*. [Multiple Subjects]
+describes how the subjects are matched.
 
 Finally, the pattern condition chain:
 
@@ -1227,9 +1189,7 @@ match(value, case a) * b // multiplication outside the test
 
 ## Multiple Subjects
 
-Match selections and single-pattern tests can match several subjects. Their
-*expression-list* is non-empty. Each *initializer-clause* must be an
-*assignment-expression* rather than a *braced-init-list*.
+Match selections and single-pattern tests can match several subjects.
 
 For example:
 
@@ -1290,6 +1250,45 @@ match ((first(), second())) {
 # Patterns
 
 This section describes the individual patterns and their semantics in detail.
+
+The following is a simplified, informal overview of their grammar:
+
+```cpp
+$pattern$:
+    $or-pattern$
+
+$or-pattern$:
+    $primary-pattern$
+    $or-pattern$ || $primary-pattern$
+
+$primary-pattern$:
+    _
+    $inclusive-or-expression$
+    $declaration-pattern$
+    ( $pattern$ )
+    [ $decomposition-pattern-list~opt~$ ]
+    { $pattern$ }
+    { $type-id$ : $pattern$ }
+    { $type-constraint$ : $pattern$ }
+    { $named-selector$ : $pattern$ }
+    { $named-selector$ }
+    { }
+
+$named-selector$:
+    . $identifier$
+    . $simple-template-id$
+
+$decomposition-pattern-list$:
+    $decomposition-pattern-element$
+    $decomposition-pattern-list$ , $decomposition-pattern-element$
+
+$decomposition-pattern-element$:
+    $pattern$
+    ...
+    $inclusive-or-expression$ ...
+```
+
+The pack forms are described in [Packs].
 
 ## Wildcard Pattern
 
@@ -1868,7 +1867,7 @@ case [] => empty_product();
 
 ### Packs
 
-One arity-inferred subpattern pack is permitted:
+At most one arity-inferred subpattern pack is permitted:
 
 ```cpp
 case [auto&& first, auto&& ...middle, auto&& last]
@@ -1912,6 +1911,9 @@ void classify(const auto& tup) {
 
 Omitting the name as `[Types...]` performs the same checks without initializing
 the declarations. Both forms can expand to an empty sequence.
+
+A declaration such as `Widget... xs` is ill-formed when `Widget` names a single
+type rather than a type pack.
 
 Declaration patterns can themselves contain structured-binding packs:
 
@@ -3359,7 +3361,7 @@ match selection statements and expressions. It also lets a case be moved
 between the two forms without changing its separator. The tradeoff is that the
 grammar to the right of the same token depends on whether the enclosing match
 selection is a statement or an expression. That dependence already exists for
-the match selection itself and is explicit in [Syntax Overview].
+the match selection itself and is explicit in [Pattern Matching Constructs].
 
 The control-flow rules are described in [Handlers and Result Types].
 
