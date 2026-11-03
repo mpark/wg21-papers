@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="generator" content="mpark/wg21" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
-  <meta name="dcterms.date" content="2026-11-02" />
+  <meta name="dcterms.date" content="2026-11-03" />
   <title>Pattern Matching with `match` and `case`</title>
   <style>
 
@@ -1581,7 +1581,7 @@ background-color: #4b6345;
   </tr>
   <tr>
     <td>Date:</td>
-    <td>2026-11-02</td>
+    <td>2026-11-03</td>
   </tr>
   <tr>
     <td style="vertical-align:top">Project:</td>
@@ -1837,6 +1837,11 @@ declarator form, preserving
 and
 <code class="sourceCode cpp"><span class="kw">auto</span><span class="op">((</span>x<span class="op">))</span></code>
 as expression patterns.</li>
+<li>Contextual parsing of
+<code class="sourceCode cpp"><span class="kw">match</span> <span class="kw">constexpr</span></code>
+now preserves ordinary constexpr declarations when
+<code class="sourceCode cpp"><span class="kw">match</span></code> names
+a type.</li>
 <li>Redundant cases are now well-formed, with a recommended warning.
 Non-viable patterns remain ill-formed. A dependent pattern is rejected
 when no substitution can make it viable.</li>
@@ -1850,6 +1855,9 @@ control-flow entry that would bypass matching and initialization.</li>
 <code class="sourceCode cpp"><span class="kw">match</span><span class="op">(</span>value<span class="op">,</span> <span class="cf">case</span> <span class="op">[</span><span class="dt">int</span> x<span class="op">,</span> <span class="dt">int</span> y<span class="op">]</span> <span class="cf">if</span> <span class="op">(</span>x <span class="op">==</span> y<span class="op">))</span></code>.
 This form was omitted from R6’s grammar but remained supported by the
 prototype.</li>
+<li>The restriction on non-trivial moves does not apply to guarded match
+test expressions. It still applies to guarded match-selection cases.
+Pattern conditions continue to allow non-trivial moves.</li>
 <li>Match cases retain source-order priority, but matching operations
 may be reordered and equivalent occurrences may be coalesced. Their
 results may be retained across guard evaluation.</li>
@@ -3297,16 +3305,16 @@ cannot jump directly to a label inside it and bypass condition
 evaluation and initialization of its pattern names.</p>
 <p>The first top-level
 <code class="sourceCode cpp"><span class="op">=</span></code> separates
-the pattern from the subject. This is unambiguous because an assignment
-expression is not a pattern. The subject is an
-<em>inclusive-or-expression</em>, so an assignment, conditional, or
-logical-or expression must be parenthesized:</p>
+the pattern from the subject. This is unambiguous because an
+unparenthesized assignment expression is not a pattern. The subject is
+an <em>inclusive-or-expression</em>, so a logical-and, logical-or,
+conditional, or assignment expression must be parenthesized:</p>
 <div class="sourceCode" id="cb40"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="op">(</span><span class="cf">case</span> <span class="kw">auto</span> value <span class="op">=</span> <span class="op">(</span>ready <span class="op">?</span> first <span class="op">:</span> second<span class="op">)</span> <span class="op">&amp;&amp;</span> valid<span class="op">(</span>value<span class="op">))</span></span>
 <span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a>  use<span class="op">(</span>value<span class="op">);</span></span></code></pre></div>
 <p>An <code class="sourceCode cpp"><span class="cf">if</span></code>
-pattern guard is not accepted in this form. A later
+pattern guard is not accepted in this form. A subsequent
 <code class="sourceCode cpp"><span class="op">&amp;&amp;</span></code>
-condition is the guard.</p>
+condition serves the purpose of a pattern guard.</p>
 <p><code class="sourceCode cpp"><span class="cf">if</span> <span class="kw">constexpr</span> <span class="op">(</span><span class="cf">case</span> P <span class="op">=</span> E<span class="op">)</span></code>
 does not turn the pattern condition into a detection operation. The
 <code class="sourceCode cpp"><span class="kw">constexpr</span></code>
@@ -3322,39 +3330,39 @@ returns to ordinary C++ parsing if the prefix does not select the match
 grammar. This classification does not build the subject, perform
 overload resolution, or emit diagnostics.</p>
 <p>For valid programs, the recognition flow is:</p>
-<div class="sourceCode" id="cb41"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a>start at &#39;<code class="sourceCode cpp"><span class="kw">match</span></code>&#39;</span>
+<div class="sourceCode" id="cb41"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a>start at &#39;<code class="sourceCode cpp"><span class="kw">match</span></code>&#39;, then skip an optional &#39;<code class="sourceCode cpp"><span class="kw">constexpr</span></code>&#39;</span>
 <span id="cb41-2"><a href="#cb41-2" aria-hidden="true" tabindex="-1"></a>|</span>
-<span id="cb41-3"><a href="#cb41-3" aria-hidden="true" tabindex="-1"></a>+- next token is &#39;<code class="sourceCode cpp"><span class="kw">constexpr</span></code>&#39; =&gt; match selection</span>
-<span id="cb41-4"><a href="#cb41-4" aria-hidden="true" tabindex="-1"></a>+- next token is not &#39;<code class="sourceCode cpp"><span class="op">(</span></code>&#39;     =&gt; ordinary parsing </span>
-<span id="cb41-5"><a href="#cb41-5" aria-hidden="true" tabindex="-1"></a>`- scan through the balanced non-empty &#39;<code class="sourceCode cpp"><span class="op">(</span> tokens <span class="op">)</span></code>&#39;</span>
-<span id="cb41-6"><a href="#cb41-6" aria-hidden="true" tabindex="-1"></a>   |</span>
-<span id="cb41-7"><a href="#cb41-7" aria-hidden="true" tabindex="-1"></a>   +- no matching &#39;<code class="sourceCode cpp"><span class="op">)</span></code>&#39; =&gt; ordinary parsing</span>
-<span id="cb41-8"><a href="#cb41-8" aria-hidden="true" tabindex="-1"></a>   +- next token is &#39;<code class="sourceCode cpp"><span class="op">{</span></code>&#39;</span>
-<span id="cb41-9"><a href="#cb41-9" aria-hidden="true" tabindex="-1"></a>   |  |</span>
-<span id="cb41-10"><a href="#cb41-10" aria-hidden="true" tabindex="-1"></a>   |  +- in <em>expr-only</em> context =&gt; match selection expression</span>
-<span id="cb41-11"><a href="#cb41-11" aria-hidden="true" tabindex="-1"></a>   |  `- in <em>stmt-or-expr</em> context</span>
-<span id="cb41-12"><a href="#cb41-12" aria-hidden="true" tabindex="-1"></a>   |     +- next token is &#39;<code class="sourceCode cpp"><span class="cf">case</span></code>&#39;, &#39;<code class="sourceCode cpp"><span class="op">[[</span></code>&#39;, or a preamble declaration</span>
-<span id="cb41-13"><a href="#cb41-13" aria-hidden="true" tabindex="-1"></a>   |     |  =&gt; match selection statement</span>
-<span id="cb41-14"><a href="#cb41-14" aria-hidden="true" tabindex="-1"></a>   |     +- &#39;<code class="sourceCode cpp"><span class="kw">match</span></code>&#39; is not a type name =&gt; match selection statement</span>
-<span id="cb41-15"><a href="#cb41-15" aria-hidden="true" tabindex="-1"></a>   |     `- tentatively parse &#39;<code class="sourceCode cpp"><span class="op">(</span> E <span class="op">)</span></code>&#39; as a <em>declarator</em></span>
-<span id="cb41-16"><a href="#cb41-16" aria-hidden="true" tabindex="-1"></a>   |        |</span>
-<span id="cb41-17"><a href="#cb41-17" aria-hidden="true" tabindex="-1"></a>   |        +- is a <em>declarator</em> =&gt; ordinary parsing</span>
-<span id="cb41-18"><a href="#cb41-18" aria-hidden="true" tabindex="-1"></a>   |        +- not a <em>declarator</em> =&gt; match selection statement</span>
-<span id="cb41-19"><a href="#cb41-19" aria-hidden="true" tabindex="-1"></a>   |</span>
-<span id="cb41-20"><a href="#cb41-20" aria-hidden="true" tabindex="-1"></a>   +- next token is &#39;<code class="sourceCode cpp"><span class="op">-&gt;</span></code>&#39;</span>
-<span id="cb41-21"><a href="#cb41-21" aria-hidden="true" tabindex="-1"></a>   |  |</span>
-<span id="cb41-22"><a href="#cb41-22" aria-hidden="true" tabindex="-1"></a>   |  +- in <em>stmt-or-expr</em> context =&gt; ordinary parsing</span>
-<span id="cb41-23"><a href="#cb41-23" aria-hidden="true" tabindex="-1"></a>   |  `- in <em>expr-only</em> context</span>
-<span id="cb41-24"><a href="#cb41-24" aria-hidden="true" tabindex="-1"></a>   |     +- tentatively parse <em>type-id</em> followed by &#39;<code class="sourceCode cpp"><span class="op">{</span></code>&#39; =&gt; match selection expression</span>
-<span id="cb41-25"><a href="#cb41-25" aria-hidden="true" tabindex="-1"></a>   |     `- otherwise =&gt; ordinary parsing</span>
-<span id="cb41-26"><a href="#cb41-26" aria-hidden="true" tabindex="-1"></a>   |</span>
-<span id="cb41-27"><a href="#cb41-27" aria-hidden="true" tabindex="-1"></a>   `- anything else =&gt; ordinary parsing</span></code></pre></div>
+<span id="cb41-3"><a href="#cb41-3" aria-hidden="true" tabindex="-1"></a>+- next token is not &#39;<code class="sourceCode cpp"><span class="op">(</span></code>&#39; =&gt; ordinary parsing</span>
+<span id="cb41-4"><a href="#cb41-4" aria-hidden="true" tabindex="-1"></a>`- scan through the balanced non-empty &#39;<code class="sourceCode cpp"><span class="op">(</span> tokens <span class="op">)</span></code>&#39;</span>
+<span id="cb41-5"><a href="#cb41-5" aria-hidden="true" tabindex="-1"></a>   |</span>
+<span id="cb41-6"><a href="#cb41-6" aria-hidden="true" tabindex="-1"></a>   +- no matching &#39;<code class="sourceCode cpp"><span class="op">)</span></code>&#39; =&gt; ordinary parsing</span>
+<span id="cb41-7"><a href="#cb41-7" aria-hidden="true" tabindex="-1"></a>   +- next token is &#39;<code class="sourceCode cpp"><span class="op">{</span></code>&#39;</span>
+<span id="cb41-8"><a href="#cb41-8" aria-hidden="true" tabindex="-1"></a>   |  |</span>
+<span id="cb41-9"><a href="#cb41-9" aria-hidden="true" tabindex="-1"></a>   |  +- in <em>expr-only</em> context =&gt; match selection expression</span>
+<span id="cb41-10"><a href="#cb41-10" aria-hidden="true" tabindex="-1"></a>   |  `- in <em>stmt-or-expr</em> context</span>
+<span id="cb41-11"><a href="#cb41-11" aria-hidden="true" tabindex="-1"></a>   |     +- next token is &#39;<code class="sourceCode cpp"><span class="cf">case</span></code>&#39;, &#39;<code class="sourceCode cpp"><span class="op">[[</span></code>&#39;, or a preamble declaration</span>
+<span id="cb41-12"><a href="#cb41-12" aria-hidden="true" tabindex="-1"></a>   |     |  =&gt; match selection statement</span>
+<span id="cb41-13"><a href="#cb41-13" aria-hidden="true" tabindex="-1"></a>   |     +- &#39;<code class="sourceCode cpp"><span class="kw">match</span></code>&#39; is not a type name =&gt; match selection statement</span>
+<span id="cb41-14"><a href="#cb41-14" aria-hidden="true" tabindex="-1"></a>   |     `- tentatively parse &#39;<code class="sourceCode cpp"><span class="op">(</span> E <span class="op">)</span></code>&#39; as a <em>declarator</em></span>
+<span id="cb41-15"><a href="#cb41-15" aria-hidden="true" tabindex="-1"></a>   |        |</span>
+<span id="cb41-16"><a href="#cb41-16" aria-hidden="true" tabindex="-1"></a>   |        +- is a <em>declarator</em> =&gt; ordinary parsing</span>
+<span id="cb41-17"><a href="#cb41-17" aria-hidden="true" tabindex="-1"></a>   |        +- not a <em>declarator</em> =&gt; match selection statement</span>
+<span id="cb41-18"><a href="#cb41-18" aria-hidden="true" tabindex="-1"></a>   |</span>
+<span id="cb41-19"><a href="#cb41-19" aria-hidden="true" tabindex="-1"></a>   +- next token is &#39;<code class="sourceCode cpp"><span class="op">-&gt;</span></code>&#39;</span>
+<span id="cb41-20"><a href="#cb41-20" aria-hidden="true" tabindex="-1"></a>   |  |</span>
+<span id="cb41-21"><a href="#cb41-21" aria-hidden="true" tabindex="-1"></a>   |  +- in <em>stmt-or-expr</em> context =&gt; ordinary parsing</span>
+<span id="cb41-22"><a href="#cb41-22" aria-hidden="true" tabindex="-1"></a>   |  `- in <em>expr-only</em> context</span>
+<span id="cb41-23"><a href="#cb41-23" aria-hidden="true" tabindex="-1"></a>   |     +- tentatively parse <em>type-id</em> followed by &#39;<code class="sourceCode cpp"><span class="op">{</span></code>&#39; =&gt; match selection expression</span>
+<span id="cb41-24"><a href="#cb41-24" aria-hidden="true" tabindex="-1"></a>   |     `- otherwise =&gt; ordinary parsing</span>
+<span id="cb41-25"><a href="#cb41-25" aria-hidden="true" tabindex="-1"></a>   |</span>
+<span id="cb41-26"><a href="#cb41-26" aria-hidden="true" tabindex="-1"></a>   `- anything else =&gt; ordinary parsing</span></code></pre></div>
 <p>The tentative declarator branch preserves existing declarations such
 as:</p>
-<div class="sourceCode" id="cb42"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a><span class="kw">struct</span> <span class="kw">match</span> <span class="op">{</span> <span class="kw">match</span><span class="op">(</span><span class="dt">int</span><span class="op">);</span> <span class="op">};</span></span>
+<div class="sourceCode" id="cb42"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a><span class="kw">struct</span> <span class="kw">match</span> <span class="op">{</span> <span class="kw">constexpr</span> <span class="kw">match</span><span class="op">(</span><span class="dt">int</span><span class="op">)</span> <span class="op">{}</span> <span class="op">};</span></span>
 <span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb42-3"><a href="#cb42-3" aria-hidden="true" tabindex="-1"></a><span class="kw">match</span> first<span class="op">(</span><span class="dv">0</span><span class="op">);</span></span>
-<span id="cb42-4"><a href="#cb42-4" aria-hidden="true" tabindex="-1"></a><span class="kw">match</span> <span class="op">(</span>second<span class="op">)</span> <span class="op">{</span> <span class="dv">0</span> <span class="op">};</span></span></code></pre></div>
+<span id="cb42-4"><a href="#cb42-4" aria-hidden="true" tabindex="-1"></a><span class="kw">match</span> <span class="op">(</span>second<span class="op">)</span> <span class="op">{</span> <span class="dv">0</span> <span class="op">};</span></span>
+<span id="cb42-5"><a href="#cb42-5" aria-hidden="true" tabindex="-1"></a><span class="kw">match</span> <span class="kw">constexpr</span> <span class="op">(</span>third<span class="op">)</span> <span class="op">{</span> <span class="dv">0</span> <span class="op">};</span></span></code></pre></div>
 <p>A single
 <code class="sourceCode cpp"><span class="op">[</span></code> does not
 commit to a match selection because a braced initializer can begin with
@@ -5377,10 +5385,11 @@ subject before a later nested pattern succeeds:</p>
 <span id="cb120-4"><a href="#cb120-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
 <p>If the second component is not zero,
 <code class="sourceCode cpp">value</code> is not initialized.</p>
-<p>A failed guard does not undo side effects. However, a guarded named
-declaration pattern is ill-formed if its initialization invokes a
-non-trivial move constructor. Otherwise, merely testing a case could
-consume the subject before matching continues with the next case:</p>
+<p>A failed guard does not undo side effects. A named declaration
+pattern in a guarded match-selection case is ill-formed if its
+initialization invokes a non-trivial move constructor. Without this
+restriction, a failed guard could leave the subject in a moved-from
+state before a later case is tested:</p>
 <div class="sourceCode" id="cb121"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb121-1"><a href="#cb121-1" aria-hidden="true" tabindex="-1"></a><span class="kw">match</span> <span class="op">(</span>std<span class="op">::</span>move<span class="op">(</span>value<span class="op">))</span> <span class="op">{</span></span>
 <span id="cb121-2"><a href="#cb121-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">case</span> Widget owned <span class="cf">if</span> <span class="op">(</span>owned<span class="op">.</span>satisfies<span class="op">())</span> <span class="op">=&gt;</span> use<span class="op">(</span>std<span class="op">::</span>move<span class="op">(</span>owned<span class="op">));</span> <span class="co">// error</span></span>
 <span id="cb121-3"><a href="#cb121-3" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
@@ -5390,11 +5399,10 @@ consume the subject before matching continues with the next case:</p>
 <span id="cb122-3"><a href="#cb122-3" aria-hidden="true" tabindex="-1"></a>      use<span class="op">(</span>Widget<span class="op">(</span>std<span class="op">::</span>move<span class="op">(</span>candidate<span class="op">)));</span></span>
 <span id="cb122-4"><a href="#cb122-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
 <p>Copies, reference bindings, scalar initialization, and trivial moves
-remain valid in guarded declaration patterns. Non-trivial moves remain
-valid in unguarded cases, where successful pattern selection cannot
-continue to a later case. An omitted-name declaration pattern has no
-initialization and is therefore not subject to the guarded-move
-restriction.</p>
+remain valid in guarded cases. Non-trivial moves remain valid in
+unguarded cases, where successful pattern selection cannot continue to a
+later case. An omitted-name declaration pattern has no initialization
+and is therefore not subject to the guarded-move restriction.</p>
 <h3 data-number="8.3.3" id="matching-operation-order-and-reuse"><span class="header-section-number">8.3.3</span> Matching Operation Order and
 Reuse<a href="#matching-operation-order-and-reuse" class="self-link"></a></h3>
 <p>Source-order case priority does not prescribe one sequence of
@@ -6110,11 +6118,11 @@ its subject.
 <code class="sourceCode cpp"><span class="kw">auto</span> value</code>
 copies an lvalue and moves from an rvalue.
 <code class="sourceCode cpp"><span class="kw">auto</span><span class="op">&amp;&amp;</span> value</code>
-is the forwarding spelling. A guarded declaration cannot invoke a
-non-trivial move constructor before testing the guard; initialize a
-reference and move in the handler instead. An omitted-name declaration
-pattern only checks whether that initialization would be
-well-formed.</p>
+is the forwarding spelling. In a guarded match-selection case, a named
+declaration cannot invoke a non-trivial move constructor before testing
+the guard. Bind a reference and move in the handler instead. An
+omitted-name declaration pattern only checks whether that initialization
+would be well-formed.</p>
 <h2 data-number="9.6" id="decomposition-and-forwarding"><span class="header-section-number">9.6</span> Decomposition and Forwarding<a href="#decomposition-and-forwarding" class="self-link"></a></h2>
 <p>A structured-binding name is an lvalue expression, regardless of the
 value category used to initialize the structured binding. Its special
