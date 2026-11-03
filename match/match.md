@@ -234,6 +234,10 @@ These are working notes for R7 and are not part of the proposal.
   in pattern matching.
 - Clarify which library components are proposed and how they relate to the
   language facility, including [Standard Specializations].
+- Clarify whether `match constexpr` requires declaration initialization to be
+  constant-evaluated when no pattern test or guard uses the declared object.
+  The prototype currently requires a constexpr copy constructor for a by-value
+  declaration pattern even when there is no guard.
 - Address the concerns raised by P3619R1 in [Design Decisions and Alternatives
   Considered].
 - Complete the `alternative_traits` contract: lookup, header availability, a
@@ -3203,6 +3207,46 @@ auto parse(std::string_view input) {
     case Format::binary => parse_binary(input);
     case _ => static_assert(false, "unsupported format");
   };
+}
+```
+
+`match constexpr` can also select an alternative:
+
+```cpp
+struct IPv4 { unsigned char octets[4]; };
+struct IPv6 { unsigned short segments[8]; };
+using Address = std::variant<IPv4, IPv6>;
+
+constexpr Address v4 = IPv4{{127, 0, 0, 1}};
+constexpr Address v6 = IPv6{{0, 0, 0, 0, 0, 0, 0, 1}};
+
+template <const Address& address>
+constexpr auto concrete_address() {
+  return match constexpr (address) {
+    case { const IPv4& value } => value;
+    case { const IPv6& value } => value;
+  };
+}
+
+constexpr auto loopback4 = concrete_address<v4>();
+constexpr auto loopback6 = concrete_address<v6>();
+```
+
+`concrete_address<v4>()` returns an `IPv4`, while `concrete_address<v6>()`
+returns an `IPv6`. Only the selected handler participates in result-type
+deduction. An ordinary `match` would require both handlers to deduce the same
+result type.
+
+The selection is similar to an `if constexpr` on the discriminator, with the
+projection and binding in the selected branch:
+
+```cpp
+if constexpr (address.index() == 0) {
+  const IPv4& value = std::get<0>(address);
+  return value;
+} else {
+  const IPv6& value = std::get<1>(address);
+  return value;
 }
 ```
 
