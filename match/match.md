@@ -57,7 +57,8 @@ highlighting:
     and group viability, exhaustiveness, usefulness, case instantiation, and
     evaluation under Match Semantics.
   - Clarify phrasing and examples throughout, including protocol descriptions,
-    required and residual domains, and implementation notes.
+    required and residual domains, match test expression lifetimes, and
+    implementation notes.
 
 ## R5 → R6 {- .unlisted #r5-to-r6}
   - Prior to the Hagenberg meeting in January 2025, further implementation
@@ -1050,12 +1051,12 @@ are visible in that guard, but no names introduced by the expression are
 visible outside it.
 
 A match test expression requires its pattern to be viable. A non-viable
-pattern makes the expression ill-formed rather than producing `false`. In a
-dependent context, viability is checked after substitution.
+pattern makes the expression ill-formed rather than producing `false`.
+Dependent viability requirements are checked after substitution.
 
-For a well-formed expression, each subject is evaluated once. The guard is
-evaluated only if the pattern matches. The result is `true` if the pattern and
-optional guard succeed, and `false` otherwise.
+The expression has type `bool`. Each subject is evaluated once. The guard is
+evaluated only if the pattern matches. The result is `true` if the pattern
+and optional guard succeed, and `false` otherwise.
 
 For example:
 
@@ -3034,13 +3035,17 @@ If usefulness cannot be determined, the guard and handler are instantiated.
 - A prvalue subject is materialized in hidden storage.
 - Its original value category is retained when it is passed to a projection
   operation. The projection operation determines the category of its result.
-- In a match selection expression, the hidden subject survives through the containing
-  full-expression. In a match statement it survives through the statement.
+- In a match selection expression or match test expression, the hidden subject
+  survives through the containing full-expression. In a match statement it
+  survives through the statement.
 - In an `if` pattern condition, the hidden subject survives through the entire
   `if` statement, including the `else` path.
 - In a `while` or traditional `for` pattern condition, it survives through the
   current condition evaluation and iteration, including the `for` iteration
   expression. It is destroyed before the next condition evaluation.
+
+Objects declared by a match test expression are destroyed at the end of the
+containing full-expression.
 
 Objects declared by pattern conditions remain alive through the successful
 controlled statement and any `for` iteration expression. If a later `&&`
