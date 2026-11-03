@@ -1145,6 +1145,66 @@ operation. The `constexpr` applies after the condition has been formed.
 [Subject and Lifetime] describes the lifetimes of pattern declarations and
 their hidden subjects.
 
+## Multiple Subjects
+
+Match selections and match test expressions can match several subjects.
+
+For example:
+
+```cpp
+match (first, second) {
+  case [0, int value] => use(value);
+  case [int value, 0] => use(value);
+  case [_, _]         => fallback();
+}
+
+bool both_zero = match(first, second, case [0, 0]);
+```
+
+One subject is matched directly. Several subjects form an unnamed,
+exposition-only product whose elements preserve the original value categories.
+For this product, the top-level pattern must be a decomposition pattern,
+a structured-binding declaration pattern, or a wildcard, including grouped and
+or-pattern combinations of those forms. A declaration such as `auto whole`
+cannot expose the unnamed product type.
+
+A bit-field is represented by value because it cannot initialize a reference
+member. A pack expansion retains the product interpretation even when it
+expands to zero or one element:
+
+```cpp
+match (values...) {
+  case [auto&& ...elements] => use(elements...);
+}
+```
+
+In particular, a one-element expansion does not collapse to direct matching.
+The extra decomposition level remains visible:
+
+```cpp
+constexpr int classify(auto... values) {
+  return match (values...) {
+    case [1, 1]   => 0; // two subjects
+    case [[1, 1]] => 1; // one subject that is a two-element product
+    case _        => 2;
+  };
+}
+
+static_assert(classify(1, 1) == 0);
+static_assert(classify(std::pair(1, 1)) == 1);
+```
+
+This preserves arity matching for every pack size: `[]`, `[_]`, and `[_, _]`
+continue to distinguish zero, one, and two subjects.
+
+An ordinary comma expression remains one subject when parenthesized:
+
+```cpp
+match ((first(), second())) {
+  case P => action();
+}
+```
+
 ## Contextual Parsing of `match`
 
 `match` remains an identifier and can already name a type, function, or
@@ -1213,66 +1273,6 @@ the subject list from the pattern:
 match(value, case a * b) // expression pattern
 match(value, case T * x) // declaration pattern if T names a type
 match(value, case a) * b // multiplication outside the test
-```
-
-## Multiple Subjects
-
-Match selections and match test expressions can match several subjects.
-
-For example:
-
-```cpp
-match (first, second) {
-  case [0, int value] => use(value);
-  case [int value, 0] => use(value);
-  case [_, _]         => fallback();
-}
-
-bool both_zero = match(first, second, case [0, 0]);
-```
-
-One subject is matched directly. Several subjects form an unnamed,
-exposition-only product whose elements preserve the original value categories.
-The top-level pattern must therefore be a decomposition pattern, a
-structured-binding declaration pattern, or a wildcard, including grouped and
-or-pattern combinations of those forms. A declaration such as `auto whole`
-cannot expose the unnamed product type.
-
-A bit-field is represented by value because it cannot initialize a reference
-member. A pack expansion retains the product interpretation even when it
-expands to zero or one element:
-
-```cpp
-match (values...) {
-  case [auto&& ...elements] => use(elements...);
-}
-```
-
-In particular, a one-element expansion does not collapse to direct matching.
-The extra decomposition level remains visible:
-
-```cpp
-constexpr int classify(auto... values) {
-  return match (values...) {
-    case [1, 1]   => 0; // two subjects
-    case [[1, 1]] => 1; // one subject that is a two-element product
-    case _        => 2;
-  };
-}
-
-static_assert(classify(1, 1) == 0);
-static_assert(classify(std::pair(1, 1)) == 1);
-```
-
-This preserves arity matching for every pack size: `[]`, `[_]`, and `[_, _]`
-continue to distinguish zero, one, and two subjects.
-
-An ordinary comma expression remains one subject when parenthesized:
-
-```cpp
-match ((first(), second())) {
-  case P => action();
-}
 ```
 
 # Patterns
