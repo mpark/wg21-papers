@@ -616,7 +616,7 @@ The corresponding projections use `get<state::value>(file)` and
 
 The complete protocol also describes empty states, canonical value states,
 residual states, templated names, and open alternative types. Those facilities
-are specified in [The `alternative_traits` Protocol].
+are specified in [`alternative_traits` Protocol].
 
 # Motivation and Scope
 
@@ -662,7 +662,7 @@ A bare identifier remains an expression that refers to an existing name.
 The library portion introduces a new customization point,
 `std::alternative_traits`, and standard specializations for nullable,
 alternatives, type-erased, comparison-category, and calendar types.
-[The `alternative_traits` Protocol] presents the protocol and representative
+[`alternative_traits` Protocol] presents the protocol and representative
 specializations. The full set of definitions will be a separate paper targeted
 for LEWG.
 
@@ -833,7 +833,7 @@ alternatives. Coverage from earlier cases can determine which instantiations
 are needed.
 
 The following sections describe [Pattern Matching Constructs], [Patterns], and
-[The `alternative_traits` Protocol]. [Match Semantics] covers checking, case
+[`alternative_traits` Protocol]. [Match Semantics] covers checking, case
 instantiation, and evaluation.
 
 # Pattern Matching Constructs
@@ -2253,31 +2253,26 @@ match (value) {
   for a generic projection of the open remainder.
 
 The protocol for closed and open alternative types is described in
-[The `alternative_traits` Protocol]. The syntax and alternatives considered
+[`alternative_traits` Protocol]. The syntax and alternatives considered
 are discussed in [Alternative Projection and Polymorphic Casts].
 
 ---
 
-# The `alternative_traits` Protocol
+# `alternative_traits` Protocol
 
 This section describes how a type advertises its states and supplies their
-projections. The patterns that use this information are described in
-[Alternative Pattern] and [Value and Predicate Patterns].
+projections. The information is used by [Value and Predicate Patterns],
+[Alternative Pattern], and [Exhaustiveness Checking].
 
-We need one protocol for closed alternative types such as `variant` and another form of
-the same protocol for open alternative types such as `any`. The name
-`alternative_traits`, as well as some of its member names, remains open to
-change.
+Two forms of the protocol are proposed: **closed** and **open**.
+The closed protocol supports examples such as `optional`, `expected`,
+and `variant`, while the open protocol supports examples such as `any`
+and `exception_ptr`.
 
 A specialization with a member named `alternatives` uses the closed indexed
-protocol. Otherwise, it uses the open type-indexed protocol.
+protocol. Otherwise, it uses the open protocol.
 
-The protocol functions and the Boolean tests and projections obtained
-from open-protocol result objects are user-provided matching operations under
-[Matching Operation Order and Reuse]. Its validity requirements apply to every
-specialization.
-
-## Closed Indexed Protocol
+## Closed Protocol
 
 A complete closed customization for the expected-like `my::Result<T, E>`
 looks as follows:
@@ -2439,7 +2434,7 @@ continues with the remaining rules in [Value and Predicate Patterns]. This
 includes open specializations, which advertise no value states. Such matching
 does not cover an advertised state for exhaustiveness analysis.
 
-## Open Type-Indexed Protocol
+## Open Protocol
 
 An open alternative type omits the finite state list:
 
