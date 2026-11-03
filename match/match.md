@@ -42,6 +42,9 @@ highlighting:
   - The grammar restores optional guards for single-pattern tests, as in
     `match(value, case [int x, int y] if (x == y))`. This form was omitted
     from R6's grammar but remained supported by the prototype.
+  - The restriction on non-trivial moves does not apply to guarded match test
+    expressions. It still applies to guarded match-selection cases. Pattern
+    conditions continue to allow non-trivial moves.
   - Match cases retain source-order priority, but matching operations may be
     reordered and equivalent occurrences may be coalesced. Their results may
     be retained across guard evaluation.
@@ -3075,10 +3078,10 @@ match (std::move(subject)) {
 
 If the second component is not zero, `value` is not initialized.
 
-A failed guard does not undo side effects. However, a guarded named declaration
-pattern is ill-formed if its initialization invokes a non-trivial move
-constructor. Otherwise, merely testing a case could consume the subject before
-matching continues with the next case:
+A failed guard does not undo side effects. A named declaration pattern in a
+guarded match-selection case is ill-formed if its initialization invokes a
+non-trivial move constructor. Without this restriction, a failed guard could
+leave the subject in a moved-from state before a later case is tested:
 
 ```cpp
 match (std::move(value)) {
@@ -3096,7 +3099,7 @@ match (std::move(value)) {
 ```
 
 Copies, reference bindings, scalar initialization, and trivial moves remain
-valid in guarded declaration patterns. Non-trivial moves remain valid in
+valid in guarded cases. Non-trivial moves remain valid in
 unguarded cases, where successful pattern selection cannot continue to a later
 case. An omitted-name declaration pattern has no initialization and is
 therefore not subject to the guarded-move restriction.
@@ -3741,10 +3744,10 @@ A named by-value declaration really copies or moves. Allowing only
 reference declarations would simplify failed cases and permit more projection
 reuse, but it would prevent a case from naturally consuming its subject.
 `auto value` copies an lvalue and moves from an rvalue. `auto&& value` is the
-forwarding spelling. A guarded declaration cannot invoke a non-trivial move
-constructor before testing the guard; initialize a reference and move in the handler
-instead. An omitted-name declaration pattern only checks whether that
-initialization would be well-formed.
+forwarding spelling. In a guarded match-selection case, a named declaration
+cannot invoke a non-trivial move constructor before testing the guard. Bind a
+reference and move in the handler instead. An omitted-name declaration
+pattern only checks whether that initialization would be well-formed.
 
 ## Decomposition and Forwarding
 
