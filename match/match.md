@@ -465,7 +465,7 @@ Patterns can also be used in boolean tests and control-flow conditions:
 ```cpp
 SearchResult result = search(path);
 
-// boolean-yielding single-pattern test expression
+// boolean-yielding match test expression
 bool is_file = match(result, case { const File& });
 
 // pattern condition
@@ -478,7 +478,7 @@ if (case { const Directory& directory } = result) {
 the corresponding declaration could be initialized, but does not perform that
 initialization.
 
-A single-pattern test produces `bool` according to whether its pattern and
+A match test expression produces `bool` according to whether its pattern and
 optional guard succeed.
 A *pattern condition* additionally makes names introduced by its pattern
 available in subsequent conditions and the successful branch.
@@ -853,7 +853,7 @@ $condition$:
 +   $pattern-condition-chain$
 ```
 
-The subject *expression-list* of a match selection or single-pattern test is
+The subject *expression-list* of a match selection or match test expression is
 non-empty. Each *initializer-clause* must be an *assignment-expression* rather
 than a *braced-init-list*. [Multiple Subjects] describes how the subjects are
 matched.
@@ -1032,24 +1032,25 @@ in the selected handler.
 The coverage rules for guarded cases are described in
 [Viability, Exhaustiveness, and Usefulness].
 
-## Single-Pattern Tests
+## Match Test Expressions
 
 ```cpp
 $match-test-expression$:
     match( $expression-list$ , case $pattern$ $guard~opt~$ )
 ```
 
-The `case` keyword ends the subject list and introduces the pattern and its
-optional guard. Pattern names are visible in that guard, but no names
-introduced by the test are visible outside it.
+A match test expression tests a single pattern. The `case` keyword ends the
+subject list and introduces the pattern and its optional guard. Pattern names
+are visible in that guard, but no names introduced by the expression are
+visible outside it.
 
-A single-pattern test requires its pattern to be viable. A non-viable pattern
-makes the test ill-formed rather than producing `false`. In a dependent
-context, viability is checked after substitution.
+A match test expression requires its pattern to be viable. A non-viable
+pattern makes the expression ill-formed rather than producing `false`. In a
+dependent context, viability is checked after substitution.
 
-For a well-formed test, each subject is evaluated once. The guard is evaluated
-only if the pattern matches. The result is `true` if the pattern and optional
-guard succeed, and `false` otherwise.
+For a well-formed expression, each subject is evaluated once. The guard is
+evaluated only if the pattern matches. The result is `true` if the pattern and
+optional guard succeed, and `false` otherwise.
 
 For example:
 
@@ -1077,8 +1078,8 @@ $pattern-condition-operand$:
 
 A *pattern-condition-chain* contains at least one *pattern-condition*.
 
-Pattern conditions have the same viability requirements as [Single-Pattern
-Tests]. They can appear in `if`, `while`, and traditional `for` statements,
+Pattern conditions have the same viability requirements as [Match Test
+Expressions]. They can appear in `if`, `while`, and traditional `for` statements,
 but not in `switch`:
 
 ```cpp
@@ -1199,8 +1200,8 @@ return match (value) -> Result { case _ => Result{}; }; // match selection
 return match(value)->result;                            // member access
 ```
 
-The single-pattern form is simpler. A top-level comma followed by `case`
-separates the subject list from the pattern:
+In a match test expression, a top-level comma followed by `case` separates
+the subject list from the pattern:
 
 ```cpp
 match(value, case a * b) // expression pattern
@@ -1210,7 +1211,7 @@ match(value, case a) * b // multiplication outside the test
 
 ## Multiple Subjects
 
-Match selections and single-pattern tests can match several subjects.
+Match selections and match test expressions can match several subjects.
 
 For example:
 
@@ -3291,9 +3292,9 @@ that context determines whether the same prefix begins a statement or an
 expression. [Contextual Parsing of `match`] describes that distinction and how
 we preserve ordinary declarations and calls named `match`.
 
-The corresponding single-pattern Boolean test is
-`match(E1, E2, case P)`. It uses the same subject and pattern rules as a
-match selection and does not introduce a separate `is` expression.
+The corresponding match test expression is `match(E1, E2, case P)`. It uses
+the same subject and pattern rules as a match selection and does not introduce
+a separate `is` expression.
 
 ### Why not `switch`?
 
@@ -3438,7 +3439,7 @@ declaration pattern:
 
 It also makes the beginning of each case easy to find in a larger selection
 and gives the feature one repeated form: `case P` appears in match selections,
-single-pattern tests, and pattern conditions.
+match test expressions, and pattern conditions.
 
 The introducer also helps distinguish a match selection from an ordinary
 declaration such as `match (value) { 0 };`. [Contextual Parsing of `match`]
@@ -3970,7 +3971,7 @@ denotes an object.
 
 ## Strict Viability
 
-We considered making an invalid dependent single-pattern test evaluate to
+We considered making an invalid dependent match test expression evaluate to
 `false`. This is convenient for shape detection, but combines two questions:
 
 - can the operation be formed?
@@ -4000,8 +4001,8 @@ static_assert(!is_two_element<int>);
 ```
 
 Dependent match selections behave differently: a non-viable source case is
-discarded for that specialization. A well-formed unguarded single-pattern test is
-therefore equivalent in value to:
+discarded for that specialization. A well-formed unguarded match test
+expression is therefore equivalent in value to:
 
 ```cpp
 (match (E) { case P => true; case _ => false; })
@@ -4020,7 +4021,7 @@ An explicit `match requires` mode was also considered. It makes generic
 structural dispatch convenient, but gives us two nearly identical forms of
 `match`. It also does not remove the need to distinguish a non-viable case
 from a selected declaration whose initialization is invalid. We keep
-single-pattern tests strict and handle dependent match cases separately.
+match test expressions strict and handle dependent match cases separately.
 
 This changes the strict static-condition rule explored in R5. That rule caught
 mistakes such as a string literal in a character match:
@@ -4039,12 +4040,12 @@ void evaluate(const Operator& op) {
 
 If `op.kind()` is dependent, the `"/"` case does not apply when the result is
 `char`. This behavior is needed for generic cases over a dependent alternative
-type, but it does make this typo harder to find. A strict single-pattern test
-and an explicit `requires` expression can still ask whether a pattern is valid.
-We should discuss whether dependent match selections also need an opt-in strict
-mode.
+type, but it does make this typo harder to find. A strict match test expression
+and an explicit `requires` expression can still ask whether a pattern is
+valid. We should discuss whether dependent match selections also need an
+opt-in strict mode.
 
-## Multiple Subjects and Single-Pattern Tests
+## Multiple Subjects and Match Test Expressions
 
 Prefix syntax provides a natural boundary for matching several values. The
 product model described in [Multiple Subjects] keeps arity matching uniform
