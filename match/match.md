@@ -29,6 +29,8 @@ highlighting:
     argument-dependent lookup.
   - Declaration-versus-expression disambiguation follows the outer declarator
     form, preserving `T(x)` and `auto((x))` as expression patterns.
+  - Contextual parsing of `match constexpr` now preserves ordinary constexpr
+    declarations when `match` names a type.
   - Redundant cases are now well-formed, with a recommended warning.
     Non-viable patterns remain ill-formed. A dependent pattern is rejected
     when no substitution can make it viable.
@@ -1150,10 +1152,9 @@ overload resolution, or emit diagnostics.
 For valid programs, the recognition flow is:
 
 ```
-start at '@`match`@'
+start at '@`match`@', then skip an optional '@`constexpr`@'
 |
-+- next token is '@`constexpr`@' => match selection
-+- next token is not '@`(`@'     => ordinary parsing 
++- next token is not '@`(`@' => ordinary parsing
 `- scan through the balanced non-empty '@`( tokens )`@'
    |
    +- no matching '@`)`@' => ordinary parsing
@@ -1182,10 +1183,11 @@ start at '@`match`@'
 The tentative declarator branch preserves existing declarations such as:
 
 ```cpp
-struct match { match(int); };
+struct match { constexpr match(int) {} };
 
 match first(0);
 match (second) { 0 };
+match constexpr (third) { 0 };
 ```
 
 A single `[` does not commit to a match selection because a braced initializer
