@@ -772,11 +772,10 @@ The patterns proposed are:
 | Decomposition | `[]`<br>`[P@~1~@, /* ... */, P@~n~@]`<br>`[P@~1~@, ..., P@~n~@]`<br>`[P@~1~@, auto&& ...xs, P@~n~@]`<br>`[P@~1~@, auto&& ..., P@~n~@]`<br>`[xs...]`<br>`[Ts...]` | Recursively match structural elements, optionally consuming or expanding a pack |
 | Alternative | `{ P }`<br>`{}`<br>`{ T: P }`<br>`{ C: P }`<br>`{ .name: P }`<br>`{ .name }` | Select an alternative and optionally project it |
 
-Patterns are constructed recursively via composition. There are primary patterns
-such as value pattern (e.g. `0`) and declaration pattern (e.g. `int x`), and
-compound patterns such as decomposition pattern (e.g. `[P1, P2]`) that have
-nested sub-patterns. For example, `[0, int x]` is a decomposition pattern with
-nested sub-patterns `0` and `int x`.
+Patterns are constructed recursively via composition. Patterns such as a
+decomposition pattern (e.g. `[P1, P2]`) have nested sub-patterns. For example,
+`[0, int x]` is a decomposition pattern with the value pattern `0` and the
+declaration pattern `int x` as its nested sub-patterns.
 
 Every pattern matches against its current subject. A single top-level subject
 expression supplies the initial current subject directly. Multiple subject
@@ -950,8 +949,8 @@ $match-selection-expr-handler$:
 
 A match selection statement has no result type, and each handler is any
 *statement*. This includes declaration statements, compound statements,
-control statements, and jump statements. An expression used as a statement has
-its value discarded in the ordinary way.
+control statements, and jump statements. An expression statement has its
+value discarded in the ordinary way.
 
 Only the selected handler is evaluated. Cases do not fall through.
 
@@ -1282,7 +1281,6 @@ match(value, case a) * b // multiplication outside the test
 # Patterns
 
 This section describes the individual patterns and their semantics in detail.
-
 The following is a simplified, informal overview of their grammar:
 
 ```cpp
@@ -1294,65 +1292,53 @@ $or-pattern$:
     $or-pattern$ || $primary-pattern$
 
 $primary-pattern$:
-    _
-    $inclusive-or-expression$
+    $wildcard-pattern$
+    $expression-pattern$
     $declaration-pattern$
-    ( $pattern$ )
-    [ $decomposition-pattern-list~opt~$ ]
-    { $pattern$ }
-    { $type-id$ : $pattern$ }
-    { $type-constraint$ : $pattern$ }
-    { $named-selector$ : $pattern$ }
-    { $named-selector$ }
-    { }
-
-$named-selector$:
-    . $identifier$
-    . $simple-template-id$
-
-$decomposition-pattern-list$:
-    $decomposition-pattern-element$
-    $decomposition-pattern-list$ , $decomposition-pattern-element$
-
-$decomposition-pattern-element$:
-    $pattern$
-    ...
-    $inclusive-or-expression$ ...
+    $parenthesized-pattern$
+    $decomposition-pattern$
+    $alternative-pattern$
 ```
-
-The pack forms are described in [Packs].
 
 ## Wildcard Pattern
 
-> | `_`
+```cpp
+$wildcard-pattern$:
+    _
+```
 
 A wildcard pattern always matches any *subject*.
 
-An initial `_` is interpreted as a wildcard even if an outer declaration has
-that name. To use such an identifier in an expression pattern, use an
-unambiguous expression spelling such as `auto(_ + 1)` or `+_`.
+The `_` is interpreted as a wildcard even if an existing variable named `_` is
+present. To use such an identifier as an expression pattern, use an explicit
+expression spelling such as `auto(_)` or `+_`.
 
 The choice of `_` is discussed in [Wildcard and Value Patterns].
 
 ## Value and Predicate Patterns
 
-> | `$inclusive-or-expression$`
+```cpp
+$expression-pattern$:
+    $inclusive-or-expression$
+```
 
-Value and predicate patterns have the same form. The expression `$e$` is
-required to be a constant expression as specified in [expr.const], e.g. a
-literal, `constexpr` variable, enumerator, function, or `constexpr` function
-object.
+Value and predicate patterns have the same form. A value pattern ordinarily
+compares the current subject with `$e$`, while a predicate pattern invokes
+`$e$` on that subject.
 
 The grammar leaves top-level `or` to [Or-pattern] and reserves `and` for a
 future extension.
 
+The expression `$e$` is required to be a constant expression as specified in
+[expr.const], e.g. a literal, `constexpr` variable, enumerator, function, or
+`constexpr` function object.
+
 Matching proceeds as follows:
 
-Let `$s$` be the current subject and `$S$` denote `std::remove_cvref_t<decltype($s$)>`.
+Let `$s$` be the current subject.
 
-1. Let `$AT$` denote `std::alternative_traits<$S$>`. If `$AT$` is a complete type,
-   consult [Advertised Value States] for further conditions.
-   If `$e$` is not an advertised value, continue with the remaining steps.
+1. If `$e$` is an advertised value of the current subject, test its state as
+   described in [Advertised Value States].
 2. Otherwise, if both `$s$` and `$e$` are of integral or enumeration types,
    apply the operand compatibility rules of the built-in three-way comparison.
    If those rules accept the operands, compare the converted operands with
@@ -1364,32 +1350,41 @@ Let `$s$` be the current subject and `$S$` denote `std::remove_cvref_t<decltype(
    The parenthesized `($e$)` intentionally suppresses argument-dependent lookup.
 5. Otherwise, the pattern is not viable.
 
-The proposed `alternative_traits` specialization for `std::partial_ordering`
-advertises its four values, making this `match` exhaustive without a wildcard.
-Without the specialization, these value patterns would invoke `operator==` which
-would not contribute to exhaustiveness coverage.
-
-```cpp
-std::string_view describe(std::partial_ordering order) {
-  return match (order) -> std::string_view {
-    case std::partial_ordering::less => "less";
-    case std::partial_ordering::equivalent => "equivalent";
-    case std::partial_ordering::greater => "greater";
-    case std::partial_ordering::unordered => "unordered";
-  };
-}
-```
-
-See [Advertised Value States] for how a specialization advertises constant
-values.
+Equality has priority over invocation, so an ordinarily comparable constant
+remains a value pattern even if its type also has a call operator.
 
 The second step uses the operand compatibility and conversion rules of built-in
 `<=>`. It does not evaluate `<=>` or consider a user-defined overload. This
 rejects comparisons between `bool` and any other integral type, as well as
 comparisons involving narrowing conversions.
 
-For example, `true` and `false` match only the `bool` alternative.
-Neither pattern matches the `int` alternative:
+Enumeration values are compared using built-in equality rather than an
+overloaded `operator==`, consistently with `switch`. Unlike `switch`, an
+integer value pattern such as `case 1` cannot match against an `enum` subject.
+The pattern must explicitly be a value of the enumeration type.
+
+Value and predicate patterns can be used together. Here, `"--help"` is compared
+with `option` using ordinary equality, while `starts_with("-I")` produces a
+predicate:
+
+```cpp
+constexpr auto starts_with(std::string_view prefix) {
+  return [prefix](std::string_view text) {
+    return text.starts_with(prefix);
+  };
+}
+
+std::string_view classify(std::string_view option) {
+  return match (option) -> std::string_view {
+    case "--help" => "help";
+    case starts_with("-I") => "include path";
+    case _ => "other";
+  };
+}
+```
+
+For a `variant<bool, int>`, `true` and `false` match only the `bool`
+alternative. Neither pattern matches the `int` alternative:
 
 ```cpp
 using V = std::variant<bool, int>;
@@ -1403,9 +1398,7 @@ int classify(const V& v) {
 }
 ```
 
-In the second step, enumeration values are compared using built-in equality
-rather than an overloaded `operator==`. This behavior is consistent with
-`switch`. For example:
+An overloaded `operator==` is not used by enumeration value patterns:
 
 ```cpp
 enum Mode { Read, Write };
@@ -1429,33 +1422,6 @@ match (mode) {
 }
 ```
 
-Unlike `switch`, an integer value pattern such as `case 1` cannot match against
-an `enum` subject. This is also a result of following the built-in `<=>` rules.
-The pattern must explicitly be a value of the enumeration type.
-
-Equality has priority over invocation, so an ordinarily comparable constant
-remains a value pattern even if its type also has a call operator.
-
-Value and predicate patterns can be used together. Here, `"--help"` is compared
-with `option` using ordinary equality, while `starts_with("-I")` produces a
-predicate:
-
-```cpp
-constexpr auto starts_with(std::string_view prefix) {
-  return [prefix](std::string_view text) {
-    return text.starts_with(prefix);
-  };
-}
-
-std::string_view classify(std::string_view option) {
-  return match (option) -> std::string_view {
-    case "--help" => "help";
-    case starts_with("-I") => "include path";
-    case _ => "other";
-  };
-}
-```
-
 Predicate patterns are particularly useful with classification APIs such as
 reflection:
 
@@ -1472,171 +1438,72 @@ consteval std::string_view classify(std::meta::info entity) {
 static_assert(classify(^^int) == "type");
 ```
 
-Predicate patterns do not contribute to exhaustiveness, even when their
-invocation can be constant-evaluated. Only the pattern expression is required
-to be constant.
+Only the pattern expression is required to be constant, not the predicate
+invocation. The coverage rules are described in
+[Viability, Exhaustiveness, and Usefulness].
 
 The use of ordinary expressions for value and predicate patterns is discussed
 in [Wildcard and Value Patterns].
 
+### Advertised Value States
+
+A type can advertise constant values as labels for its states through
+`std::alternative_traits`. Matching such a label tests the active state rather
+than comparing the subject with the label.
+
+Let `$S$` denote `std::remove_cvref_t<decltype($s$)>` and `$AT$` denote
+`std::alternative_traits<$S$>`. If `$AT$` is a complete type with a member named
+`alternatives`, a reflected constant in `alternatives[I]` labels state `I`.
+`$AT$::index($s$)` determines whether that state is active. A value pattern
+selects the state when its constant has the same canonical type and value as
+the advertised constant. The advertised constant is not compared with the
+subject or the discriminator, and matching it does not invoke `operator==`.
+If several states advertise the same canonical value, the pattern selects
+any of those states.
+
+When the specialization does not advertise `$e$`, matching continues with the
+remaining steps above. This includes open specializations, which advertise no
+value states. For example, an ordinary `case 0` still asks whether an engaged
+`optional<int>` contains zero.
+
+The proposed `alternative_traits` specialization for `std::partial_ordering`
+advertises its four values, making this `match` exhaustive without a wildcard.
+Without the specialization, these value patterns would invoke `operator==` which
+would not contribute to exhaustiveness coverage.
+
+```cpp
+std::string_view describe(std::partial_ordering order) {
+  return match (order) -> std::string_view {
+    case std::partial_ordering::less => "less";
+    case std::partial_ordering::equivalent => "equivalent";
+    case std::partial_ordering::greater => "greater";
+    case std::partial_ordering::unordered => "unordered";
+  };
+}
+```
+
+See [Advertised Values] for how a specialization advertises these labels.
+
 ## Declaration Patterns
 
-A declaration pattern first tests whether its declaration is viable for the
-current subject. If the pattern matches and the declaration has a name, it is
-copy-initialized from that subject:
+Declaration patterns use ordinary variable and structured-binding declaration
+forms, such as:
 
 ```cpp
 case int value
 case const Widget& reference
 case auto&& forwarded
+case auto&& [first, second]
+case std::integral auto integer
 case int Owner::* member
 case int (*function)()
 case int (&array)[5]
-case std::integral auto integer
-case auto&& [first, second]
 ```
 
-A declaration pattern does not take another pattern as an operand. A
-structured-binding declaration can recursively introduce names for its
-elements, but this paper has no spelling that simultaneously names a whole
-value and matches that value with another pattern. Such a whole-value naming
-pattern is discussed in [And-Pattern and Whole-Value Naming Patterns].
-
-A declared name is introduced immediately for lookup, but using it from the
-same pattern is ill-formed. Pattern names are results of a successful match and
-are available to its guard and handler; they are not inputs to other parts of
-the pattern.
-
-Declaration patterns use ordinary declarator forms, with one rule preserving
-functional casts as expression patterns. If the outer `$noptr-declarator$` is a
-terminal `( $ptr-declarator$ )`, the result is an expression pattern. An outer
-function or array suffix instead makes it declaration syntax. Parentheses
-within the enclosed `$ptr-declarator$` are handled recursively:
-
-```cpp
-case T(value)          // expression pattern
-case auto((value))     // expression pattern
-case T* value          // declaration pattern
-case R (*function)()   // declaration pattern
-case R ((*function))() // declaration pattern
-case T (&array)[N]     // declaration pattern
-```
-
-A functional cast such as `auto(R(*function)())` forces the expression
-interpretation.
-
-The resulting declaration must declare a variable. For example,
-`T(function)()` has declaration syntax but is ill-formed because it declares a
-function. The grammar also admits structured-binding declarations, but not
-storage-class forms such as `static` and `thread_local`. The disambiguation is
-discussed further in
-[Declaration-Pattern Syntax](#declaration-pattern-syntax).
-
-At the start of a pattern, `[[` is interpreted as an attribute only when a
-complete attribute can continue a declaration pattern. Otherwise, it begins
-a nested decomposition pattern.
-
-### Viability Versus Failed Initialization
-
-There are three possible outcomes for a named declaration pattern:
-
-1. It is not viable for its current subject.
-2. It is viable and initialization succeeds.
-3. It is viable, but the selected initialization is ill-formed.
-
-Reference binding can produce (1):
-
-```cpp
-template <class T>
-int classify(variant<T> value) {
-  return match (std::move(value)) {
-    case { T& reference } => 1;
-    case _                => 2;
-  };
-}
-```
-
-For an ordinary `variant<T>`, projecting from `std::move(value)` produces
-`T&&`. The `T&` declaration is not viable, so its case is omitted for that
-specialization and the wildcard is selected.
-
-Unless an instantiation is skipped by the coverage rules in
-[Case-Local Instantiation], (3) is an error rather than a failed match:
-
-```cpp
-struct Job {
-  Job(Job&&) = default;
-  Job(const Job&) = delete;
-};
-
-void process(auto&& value) {
-  match (std::forward<decltype(value)>(value)) {
-    case Job job => execute(std::move(job));
-    case _      => report_unsupported();
-  }
-}
-
-Job job;
-process(Job{}); // moves
-process(job);   // error: selected Job initialization requires a copy
-```
-
-Silently choosing the wildcard case in the second call would turn an ownership
-error into different program behavior.
-
-### Omitted-Name Declaration Patterns
-
-A declaration pattern can omit its identifier. It has the same viability
-and well-formedness requirements as the corresponding named declaration,
-including access, deleted constructors, and reference binding, but does not
-perform the initialization:
-
-```cpp
-case Widget          // checks whether `Widget _` would be valid
-case Widget _        // initializes and destroys an ignored object
-case const Widget&   // checks whether the reference could bind
-case std::integral auto
-case [auto&&, auto&&]
-```
-
-Because the initialization is not evaluated, no object is created or
-destroyed, the subject cannot be moved from, and the hypothetical operation
-does not contribute to the exception specification. Invalid initializations
-are diagnosed as described in [Viability Versus Failed Initialization].
-
-`void` and cv-`void` are explicitly supported. This matters for dependent
-`void` expressions and `expected<void, E>` projections.
-
-The identifier can also be omitted from a constrained placeholder declaration:
-
-```cpp
-case std::integral auto
-case std::ranges::viewable_range auto&&
-```
-
-### Static Declaration Matching
-
-Declaration-pattern viability has more restrictive conditions than ordinary
-declaration initialization. The high-level motivation is that we do not want
-`case { bool b }` to match all of the alternatives of
-`variant<bool, int, float>`. The proposed rule takes inspiration from exception
-handler matching semantics in [except.handle]/3. For example:
-
-```cpp
-try {
-  throw 42;
-} catch (bool b) {
-  // ...
-} catch (int i) {
-  // ...
-}
-```
-
-Even though `bool b = 42;` would be well-formed, the `catch (bool b)` does not
-catch the `42`. Since exception handler matching is also first-match, allowing
-arbitrary implicit conversions would mean that earlier handlers end up matching
-more than intended. As such, we introduce similar restrictions to declaration
-patterns.
+A declaration pattern first tests whether its declaration is viable for the
+current subject. Viability has more restrictive conditions than ordinary
+declaration initialization. For example, `case bool b` is not viable for an
+`int` subject even though `bool b = 42;` would be well-formed.
 
 Let `$E$` be the current subject expression and `$D$` the declared type after
 placeholder deduction, if any. The declaration is statically viable when the
@@ -1652,14 +1519,34 @@ standard conversion sequence and one of the following holds:
 3. `$D$` is a reference type and the type referred to by `$D$` is
    reference-compatible with the type of `$E$` as specified in [dcl.init.ref].
 
-Base-class accessibility and initialization are checked in the context of the
-`match`. Requiring the subject itself to have pointer or pointer-to-member type
-excludes conversion from `std::nullptr_t`, integer null pointer constants,
-array-to-pointer conversion, and function-to-pointer conversion. To match a
-null pointer value, use `nullptr`. Arrays and functions can be captured by
-corresponding reference declarations.
+Static declaration matching does not require a runtime test. If it does not
+apply, a class declaration can use the runtime cast described in
+[Polymorphic Class Matching]. The pattern is then viable only if the cast is
+well-formed, and matches only if the cast succeeds.
+
+If the pattern matches and the declaration has a name, it is copy-initialized
+from the subject or the adjusted result of the runtime cast.
 
 For example:
+
+```cpp
+match (42) {
+  case int value => use(value);
+}
+```
+
+Base-class accessibility and initialization are checked in the context of the
+`match`. Promotions, numeric conversions, and user-defined conversions do not
+make a declaration pattern viable.
+
+The derived-to-base case does not require a polymorphic type. A reference
+binds the base subobject. A non-reference declaration copies or moves that
+subobject and may slice.
+
+Pointer declarations require the subject itself to have pointer or
+pointer-to-member type. This excludes conversion from `std::nullptr_t`, integer
+null pointer constants, array-to-pointer conversion, and function-to-pointer
+conversion:
 
 ```cpp
 int* pointer = nullptr; // ordinary initialization permits conversion
@@ -1669,23 +1556,9 @@ match (nullptr) {
 }
 ```
 
-Promotions, numeric conversions, and user-defined conversions do not make a
-declaration pattern viable.
-
-Reference compatibility prevents a reference declaration from binding to a
-temporary produced by converting the subject to another type. It does not
-prevent materializing a prvalue of the same type. A non-reference declaration
-instead produces a new value.
-
-```cpp
-match (42) {
-  case const int& r => use(r); // binds to the materialized int
-}
-```
-
-The permitted pointer conversions keep pointing to the same object, a base
-subobject, or the same function. They do not invoke user code. For example,
-a `const int*` declaration pattern can match an `int*` subject:
+The allowed pointer conversions point to the same object, a base subobject,
+or the same function. For example, a `const int*` declaration pattern can match
+an `int*` subject:
 
 ```cpp
 match (pointer) {
@@ -1693,25 +1566,79 @@ match (pointer) {
 }
 ```
 
-As with a base-class declaration, a broader pointer declaration can make a
-later narrower declaration redundant.
+These conversions do not invoke user code. To match a null pointer value, use
+`nullptr`. Arrays and functions can be captured by corresponding reference
+declarations.
 
-The derived-to-base case does not require a polymorphic type or perform a
-runtime test. A reference binds the base subobject. A non-reference declaration
-copies or moves that subobject and may slice. Accessibility is checked in the
-context of the match, as it is for ordinary initialization.
+Reference compatibility prevents a reference declaration from binding to a
+temporary produced by converting the subject to another type. It does not
+prevent materializing a prvalue of the same type:
 
-If static declaration matching does not apply, a class declaration can use the
-runtime polymorphic cast described in [Polymorphic Class Matching].
+```cpp
+match (42) {
+  case const int& r => use(r); // binds to the materialized int
+}
+```
 
-Cases remain source-ordered. Declaration viability does not rank or reorder
-cases as an overload set would.
+A broader base-class or pointer declaration can make a later narrower
+declaration redundant. Cases have source-order priority, rather than the
+ranking of an overload set, as described in [Case Selection and Initialization].
+
+Viability does not imply that the selected initialization is well-formed.
+A viable declaration can still require a deleted copy constructor. Unless its
+instantiation is skipped by the coverage rules in [Case-Local Instantiation],
+an invalid initialization is an error rather than a failed match.
+[Dependent Case Matching] illustrates this in templates.
+
+A declared name is introduced immediately for lookup, but using it from the
+same pattern is ill-formed. Pattern names are results of a successful match and
+are available to its guard and handler. They are not inputs to other parts of
+the pattern.
+
+A declaration pattern has no nested pattern. A structured-binding declaration
+can recursively introduce names for its elements, but cannot simultaneously
+name a whole value and match it with another pattern. Whole-value naming is
+discussed in [And-Pattern and Whole-Value Naming Patterns].
+
+[Restricted Initialization] discusses these restrictions and the precedent
+from exception handler matching.
+
+### Omitted-Name Declaration Patterns
+
+A declaration pattern can omit its identifier. It has the same viability
+and well-formedness requirements as the corresponding named declaration,
+including access, deleted constructors, and reference binding, but does not
+perform the initialization:
+
+```cpp
+case Widget          // checks whether `Widget _` would be valid
+case Widget _        // initializes and destroys an ignored object
+case const Widget&   // checks whether the reference could bind
+case std::integral auto
+case std::ranges::viewable_range auto&&
+case [auto&&, auto&&]
+```
+
+Because the initialization is not evaluated, no object is created or
+destroyed, the subject cannot be moved from, and the hypothetical operation
+does not contribute to the exception specification. Invalid hypothetical
+initializations are diagnosed as for named declaration patterns.
+
+`void` and cv-`void` are explicitly supported. This matters for dependent
+`void` expressions and `expected<void, E>` projections.
 
 ### Polymorphic Class Matching
 
-A declaration pattern first tries [Static Declaration Matching]. If that
-does not apply, a class declaration can apply the corresponding pointer-form
-`dynamic_cast` to a polymorphic class subject:
+A declaration pattern first applies the static matching rules above. If they
+do not apply, a class declaration can apply the corresponding pointer-form
+`dynamic_cast` to a polymorphic class subject.
+
+This includes casts to public derived targets, virtual inheritance, pointer
+adjustment, and valid cross-casts. A failed cast is a non-match. After a
+successful cast, the declaration's cv/ref spelling has its ordinary effect:
+`Circle&` binds the adjusted object, while `Circle` copies or moves from it.
+
+For example:
 
 ```cpp
 void draw(Shape& shape) {
@@ -1724,12 +1651,10 @@ void draw(Shape& shape) {
 }
 ```
 
-This includes casts to public derived targets, virtual inheritance, pointer
-adjustment, and valid cross-casts. A failed cast is a non-match. After a
-successful cast, the declaration's cv/ref spelling has its ordinary effect:
-`Circle&` binds the adjusted object, while `Circle` copies or moves from it.
-`auto&&` exactly matches the current `Shape` subject; it does not somehow
-acquire the unknown most-derived type.
+Pointer declaration patterns do not perform runtime polymorphic casts.
+To match a pointee's runtime type, first use an alternative pattern to project
+the non-null state and then apply a class declaration pattern to that object.
+[Pointer Subjects] discusses this choice.
 
 This is an open-world operation. If `Square` derives from `Rectangle` in
 another translation unit or shared library, a `Square` passed as `Shape&` must
@@ -1737,8 +1662,9 @@ still match `Rectangle&`. Comparing exact dynamic types or vtable pointers is
 not enough. Listing every currently known derived class is not exhaustive,
 so a base-class or wildcard fallback is still required.
 
-A generic declaration can consequently be exact in one instantiation and a
-runtime-checked polymorphic cast in another:
+`auto&&` matches the current `Shape` subject. It does not acquire the unknown
+most-derived type. A `Circle&` declaration can use static matching in one
+instantiation and a runtime polymorphic cast in another:
 
 ```cpp
 void dispatch(auto& value) {
@@ -1768,24 +1694,47 @@ The constrained placeholder deduces `Circle` from a `Circle&` subject and
 `Shape` from a `Shape&` subject. The latter fails the constraint rather than
 requesting a runtime polymorphic cast.
 
-Matching a type directly is discussed as a possible future extension.
+### Declaration vs Expression Ambiguity
 
-Pointer declaration patterns do not perform runtime polymorphic casts.
-To match a pointee's runtime type, first use an alternative pattern to project
-the non-null state and then apply a class declaration pattern to that object.
-[Pointer Subjects] discusses this choice.
+Declaration patterns use ordinary declarator forms. If the outer
+`$noptr-declarator$` is a terminal `( $ptr-declarator$ )`, the result is an
+expression pattern. An outer function or array suffix instead makes it
+declaration syntax. Parentheses within the enclosed `$ptr-declarator$` are
+handled recursively:
+
+```cpp
+case T(value)          // expression pattern
+case auto((value))     // expression pattern
+case T* value          // declaration pattern
+case R (*function)()   // declaration pattern
+case R ((*function))() // declaration pattern
+case T (&array)[N]     // declaration pattern
+```
+
+A functional cast such as `auto(R(*function)())` forces the expression
+interpretation.
+
+The resulting declaration must declare a variable. For example,
+`T(function)()` has declaration syntax but is ill-formed because it declares a
+function. The grammar also admits structured-binding declarations, but not
+storage-class forms such as `static` and `thread_local`. The disambiguation is
+discussed further in
+[Declaration-Pattern Syntax](#declaration-pattern-syntax).
+
+At the start of a pattern, `[[` is interpreted as an attribute only when a
+complete attribute can continue a declaration pattern. Otherwise, it begins
+a nested decomposition pattern.
 
 ## Parenthesized Pattern
 
-> | `( $pattern$ )`
+```cpp
+$parenthesized-pattern$:
+    ( $pattern$ )
+```
 
-A parenthesized pattern groups any pattern. It has the same matching semantics
-and introduces the same names as its nested pattern.
-
-An opening `(` selects pattern grammar. The closing `)` ends that pattern,
-which cannot be continued as a postfix or binary expression. An expression
-beginning with `(` can instead be written inside a functional cast, such as
-`auto((value) + 1)`.
+A parenthesized pattern groups a pattern without changing its current subject.
+It is viable when its nested pattern is viable, matches when that pattern
+matches, and introduces the same names.
 
 ```cpp
 match (direction) {
@@ -1794,19 +1743,27 @@ match (direction) {
 }
 ```
 
-Parentheses around `_` or `[P@~1~@, /* ... */, P@~n~@]` are not normally
-useful when written directly, but permit uniform substitution and future
-composition with other pattern operators.
+An opening `(` selects pattern grammar. The closing `)` ends that pattern,
+which cannot be continued as a postfix or binary expression. An expression
+beginning with `(` can instead be written inside a functional cast, such as
+`auto((value) + 1)`.
 
 The reasons for general pattern grouping are discussed in
 [Parentheses and Or-pattern Syntax].
 
 ## Or-pattern
 
-> | `$pattern$ or $pattern$`
+```cpp
+$or-pattern$:
+    $primary-pattern$
+    $or-pattern$ || $primary-pattern$
+```
 
-An or-pattern applies every subpattern to the same subject from left to right
-and succeeds on the first match:
+An or-pattern applies its viable subpatterns to the same subject from left to
+right and succeeds on the first match. It is viable when at least one
+subpattern is viable for its current subject.
+
+For example:
 
 ```cpp
 match (direction) {
@@ -1824,17 +1781,6 @@ match (response) {
 }
 ```
 
-The punctuator `||` has the same grammatical meaning as the alternative token
-`or`.
-Parentheses still group a pattern, so matching the result of an ordinary
-logical expression requires an unambiguous expression spelling:
-
-```cpp
-case first or second       => either_pattern();
-case (first or second)     => grouped_pattern();
-case bool(first || second) => boolean_expression();
-```
-
 Every subpattern must introduce the same ordered names and pack structure.
 The corresponding declarations need not have the same type. The selected
 subpattern determines their types, and the declaration, guard, and handler are
@@ -1846,17 +1792,48 @@ match (value) {
 }
 ```
 
-Exactly one subpattern's named declarations are initialized. If its guard
-fails, matching continues with the next source case, not with another
-subpattern of the same or-pattern.
+When the complete pattern matches, only the selected subpattern's named
+declarations are initialized. If its guard fails, matching continues with the
+next source case, not with another subpattern of the same or-pattern.
+
+The punctuator `||` has the same grammatical meaning as the alternative token
+`or`. Parentheses still group a pattern, so matching the result of an ordinary
+logical expression requires an unambiguous expression spelling:
+
+```cpp
+case first or second       => either_pattern();
+case (first or second)     => grouped_pattern();
+case bool(first || second) => boolean_expression();
+```
 
 The choice of `or` and its interaction with expression syntax are discussed in
 [Parentheses and Or-pattern Syntax].
 
 ## Decomposition Patterns
 
+```cpp
+$decomposition-pattern$:
+    [ $decomposition-pattern-list~opt~$ ]
+
+$decomposition-pattern-list$:
+    $decomposition-pattern-element$
+    $decomposition-pattern-list$ , $decomposition-pattern-element$
+
+$decomposition-pattern-element$:
+    $pattern$
+    ...
+    $inclusive-or-expression$ ...
+```
+
 `[P@~1~@, /* ... */, P@~n~@]` decomposes the current subject using the
-structured-binding rules, then matches each component recursively:
+structured-binding rules, then matches each component recursively.
+
+A decomposition pattern is viable when the subject can be decomposed to the
+required number of elements and each nested pattern is viable for its
+corresponding element. It matches when every nested pattern matches its
+corresponding element.
+
+For example:
 
 ```cpp
 match (point) {
@@ -1867,39 +1844,40 @@ match (point) {
 }
 ```
 
-An expression beginning with `[` must use an unambiguous expression spelling,
-such as `auto([] { return 1; }())`, rather than decomposition syntax.
-
-A decomposition pattern does not impose an evaluation order between its nested
-patterns. For `[1, 2]`, either nested pattern may be tested first.
-
-Each component has the type and cv-qualification supplied by the
-structured-binding rules. Its value category as the current subject of a
-nested pattern is determined as follows:
-
-- Array elements and non-reference data members are accessed through the
-  current subject. They are lvalues when the subject is an lvalue and xvalues
-  otherwise.
-- Reference data members remain lvalues regardless of the subject's value
-  category.
-- For tuple-like decomposition, the reference initialized by `get<I>`
-  determines the category. An lvalue reference supplies an lvalue subject,
-  while an rvalue reference supplies an xvalue subject. A prvalue result is
-  materialized as required by that reference initialization.
-
-The unnamed product used for [Multiple Subjects] retains each subject's
-individual value category. The motivation for this forwarding behavior is
-discussed in [Decomposition and Forwarding].
-
 Empty decomposition is the zero-element structural pattern:
 
 ```cpp
 case [] => empty_product();
 ```
 
+Each component has the type and cv-qualification given by the
+structured-binding rules. Its value category as the current subject of a
+nested pattern is determined as follows:
+
+- Array elements and non-reference data members are accessed through the
+  current subject. They are lvalues when the subject is an lvalue and xvalues
+  otherwise.
+- Reference data members are lvalues regardless of the subject's value
+  category.
+- For tuple-like decomposition, the reference initialized by `get<I>`
+  determines the category. An lvalue reference gives an lvalue subject,
+  while an rvalue reference gives an xvalue subject. A prvalue result is
+  materialized as required by that reference initialization.
+
+The unnamed product used for [Multiple Subjects] keeps each subject's
+individual value category. The motivation for this forwarding behavior is
+discussed in [Decomposition and Forwarding].
+
+A decomposition pattern does not impose an evaluation order between its nested
+patterns. For `[1, 2]`, either nested pattern may be tested first.
+[Matching Operation Order and Reuse] describes the rules for a complete match.
+
+An expression beginning with `[` must use an unambiguous expression spelling,
+such as `auto([] { return 1; }())`, rather than decomposition syntax.
+
 ### Packs
 
-At most one arity-inferred subpattern pack is permitted:
+At most one arity-inferred subpattern pack is allowed:
 
 ```cpp
 case [auto&& first, auto&& ...middle, auto&& last]
@@ -1910,10 +1888,9 @@ case [auto&& first, ..., auto&& last]
 The first form introduces a local pack name whose types are deduced
 independently. The second is an omitted-name placeholder declaration pack. It
 checks each declaration but performs no initialization. A bare `...` is a
-wildcard pack and ignores an arity-inferred sequence of elements. This is
-essentially the pack version of the wildcard pattern `_`. Each arity-inferred
-pack can be empty, and its size is the decomposition arity minus the fixed
-prefix and suffix.
+wildcard pack, the pack form of `_`, and ignores an arity-inferred sequence of
+elements. Each arity-inferred pack can be empty, and its size is the
+decomposition arity minus the fixed prefix and suffix.
 
 An enclosing expression pack expands to a fixed number of value patterns:
 
@@ -1947,23 +1924,14 @@ the declarations. Both forms can expand to an empty sequence.
 A declaration such as `Widget... xs` is ill-formed when `Widget` names a single
 type rather than a type pack.
 
+Named declaration packs can be expanded in their case's guard and handler.
 Declaration patterns can themselves contain structured-binding packs:
 
 ```cpp
 case auto [...elements] => (... + elements);
 ```
 
-Named declaration packs can be expanded in their case's guard and handler.
-
-Subpattern packs are leaf patterns by design. They cannot apply an arbitrary
-nested pattern repeatedly. For example, this does not match a tuple of
-pair-like elements:
-
-```cpp {.not_proposed}
-case [...[auto x, auto y]] => use(x..., y...);
-```
-
-They are only permitted as decomposition-list elements, so they cannot be
+Subpattern packs are only allowed as decomposition-list elements. They cannot be
 parenthesized, used outside a decomposition pattern, or combined directly with
 `or`. An or-pattern can still combine complete decomposition patterns
 containing packs:
@@ -1973,30 +1941,64 @@ case [0, auto&& ...values] or [auto&& ...values, 0] => use(values...);
 case [auto&& ...values or _] => use(values...); // error
 ```
 
+Subpattern packs are leaf patterns by design. They cannot apply an arbitrary
+nested pattern repeatedly. For example, this does not match a tuple of
+pair-like elements:
+
+```cpp {.not_proposed}
+case [...[auto x, auto y]] => use(x..., y...);
+```
+
 ## Alternative Pattern
 
-> | `{ $pattern$ }`
-> | `{ $type-id$ : $pattern$ }`
-> | `{ $type-constraint$ : $pattern$ }`
-> | `{ . $identifier$ : $pattern$ }`
-> | `{ . $identifier$ }`
-> | `{ . $simple-template-id$ : $pattern$ }`
-> | `{ . $simple-template-id$ }`
-> | `{ }`
+```cpp
+$alternative-pattern$:
+    { $pattern$ }
+    { $type-id$ : $pattern$ }
+    { $type-constraint$ : $pattern$ }
+    { $named-selector$ : $pattern$ }
+    { $named-selector$ }
+    { }
+
+$named-selector$:
+    . $identifier$
+    . $simple-template-id$
+```
 
 For an alternative type, braces request alternative selection. A projecting
-form then applies its nested pattern to the selected projection. The following
-sections describe how selection works for closed and open types.
+form then applies its nested pattern to the selected projection.
 
-### Alternative Projection
+A projecting form is viable when its nested pattern is viable for at least
+one projection selected by the form. It matches when selection succeeds and
+the nested pattern matches that projection. A form without a nested pattern
+matches when selection succeeds.
 
-A bare `auto&` declaration binds the current subject. For a `variant`,
-this binds the whole `variant`. Braces instead project the active alternative,
-which is then recursively matched by the nested pattern.
+For example, an `optional<int>` projects its contained `int` when engaged,
+while `{}` matches its empty state:
+
+```cpp
+optional<int> value;
+
+match (value) {
+  case { int integer } => use(integer);
+  case {}              => empty();
+}
+```
+
+A declaration outside braces instead matches the current subject. For a
+`variant`, `auto& whole` binds the whole `variant`, while `{ auto& payload }`
+binds its active alternative.
 
 For a polymorphic class that also provides `alternative_traits`, a bare
 declaration uses the rules in [Declaration Patterns], including a runtime cast
 when applicable. Braces instead request the alternative protocol.
+
+### Closed Alternative Types
+
+A closed alternative type advertises a finite set of states. `{ P }` considers
+every projectable state for which `P` is viable. Matching tests whether one of
+those states is active using `index(subject)`. If so, `P` matches against its
+`get<State>(subject)` projection.
 
 ```cpp
 void consume_whole(variant<int, string>&);
@@ -2047,6 +2049,24 @@ std::visit([](auto& payload) {
 On the right, `std::visit` explicitly projects the alternative and `match`
 applies `P1` and `P2` directly to that projection. Braces perform both steps
 without requiring the user to write the generic visitor or call `std::visit`.
+The comparison covers only advertised alternatives. Handling the valueless
+state of `variant` is described in [Required and Residual Domains].
+
+A nested pattern can be viable for more than one index, including repeated
+alternatives of the same type:
+
+```cpp
+variant<int, int> value;
+
+match (value) {
+  case { const int& integer } => use(integer); // covers both indices
+}
+```
+
+Qualification adjustments can also make one declaration apply to several
+alternatives. [Case-Local Instantiation] describes which pattern, guard, and
+handler instantiations are needed. The protocol operations are described in
+[Closed Protocol].
 
 ### Selectors
 
@@ -2064,6 +2084,13 @@ without requiring the user to write the generic visitor or call `std::visit`.
   `.index<I>` for each declared index `I`; `{ .index<I>: P }` applies `P` to
   that alternative's projection, while `{ .index<I> }` selects the state
   without requiring a projection.
+
+Named selectors are looked up in the type returned by `index(subject)`. For a
+scoped enumeration, `.name` names an enumerator. For a class type, `.name` or
+`.name<I>` names a constant state value supplied by that type. An integral
+discriminator provides no named selectors. The named value identifies the
+selected state, and a projecting form uses that state's `get` operation.
+See [Named State Values] for how a provider exposes these values.
 
 Named projection chooses an advertised state before matching its projection:
 
@@ -2105,75 +2132,10 @@ match (value) {
 
 :::
 
-### Closed Alternative Types
-
-For a closed alternative type, `{ P }` considers every projectable state for
-which `P` is viable. At runtime, it tests the active state and uses the
-corresponding case instantiation.
-
-The `match` inside the generic lambda above is dependent. In a non-dependent
-match, a projecting alternative pattern must be viable for at least one
-advertised projection:
-
-```cpp
-variant<int, std::string> value;
-
-match (value) {
-  case { int i }         => use(i);
-  case { std::string s } => use(s);
-  case { double d }      => use(d); // error: matches no projectable state
-}
-```
-
-The same case in a `match` on `variant<Ts...>` remains potentially viable
-and is omitted from a specialization whose alternatives do not include
-`double`:
-
-```cpp
-template <class... Ts>
-void dependent_projection(variant<Ts...> value) {
-  match (value) {
-    case { int i }         => use(i);
-    case { std::string s } => use(s);
-    case { double d }      => use(d);
-  }
-}
-
-dependent_projection(variant<int, std::string>{42}); // `double` case omitted
-dependent_projection(variant<int, double>{2.5});     // `string` case omitted
-```
-
-A pattern may cover more than one index:
-
-```cpp
-variant<int, int> value;
-
-match (value) {
-  case { const int& integer } => use(integer); // covers both indices
-}
-```
-
-Qualification adjustments can also make one declaration apply to several
-alternatives. Usefulness is checked against the actual indices and nested value
-patterns, not just the type written in the source.
-
-The generic form `{ auto&& value }` considers each projectable state. Its guard
-and handler are instantiated only for viable, useful case instantiations,
-as described in [Case-Local Instantiation].
-
 ### Empty and Non-Projectable States
 
 `{}` matches an advertised empty state, identified by `empty == true` in
-`alternatives`. It does not match every non-projectable state:
-
-```cpp
-optional<int> value;
-
-match (value) {
-  case { int integer } => use(integer);
-  case {}              => empty();
-}
-```
+`alternatives`. It does not match every non-projectable state.
 
 Raw pointers have a built-in null/non-null alternative model. The null state
 is empty. For a non-void pointee, the non-null state projects the pointee by
@@ -2191,15 +2153,12 @@ match (pointer) {
 For a `void*`, the non-null state has type `void`. `{ void }` selects it without
 dereferencing the pointer.
 
-`nullptr` and `nullopt` retain ordinary value-pattern syntax. A closed
-specialization can identify either value as the canonical label of an
-advertised state. Such a pattern tests the subject's active state rather than
-calling `operator==`, and participates in exhaustiveness analysis. The pointer
-and `optional` models do so: `nullptr` and `{}` cover the same pointer state,
-and `nullopt` and `{}` cover the same optional state.
+In the pointer and `optional` models, the value patterns `nullptr` and `nullopt`
+select the same states as `{}`, respectively. Their state selection follows
+[Advertised Value States].
 
 A value-selected state is non-projectable but need not be empty. For example,
-the connection states in [Advertised Value States] have constant labels but
+the connection states in [Advertised Values] have constant labels but
 are not selected by `{}`.
 
 `expected<T, E>` is modeled as value/error, not value/empty. Both states are
@@ -2215,22 +2174,30 @@ match (result) {
 }
 ```
 
-The `visit` comparison above covers only advertised alternatives. The rare
-valueless state of `variant` has no projection syntax and is not required for
-exhaustiveness. A match can handle it with a whole-subject case; `visit` has
-its own behavior:
-
-```cpp
-match (value) {
-  case auto&& whole if (whole.valueless_by_exception()) => recover();
-  case { auto&& alternative } => use(alternative);
-}
-```
-
 ### Open Alternative Types and `any`
 
-An open alternative type such as `any` cannot enumerate all of its possible types. It
-still uses braces to make the runtime access explicit:
+An open alternative type such as `any` cannot enumerate all of its possible
+types. It still uses braces to make the runtime access explicit.
+
+A bare `case int integer` does not look inside the `any`; it tries to match
+the `any` object itself and fails. The projecting forms instead use the
+following operations:
+
+- `{ T: P }` calls `try_cast<T>(subject)`.
+- A direct declaration such as `{ const string& text }` calls
+  `try_init<const string&>(subject)`.
+- `{}` calls the optional `has_value(subject)` operation and matches when its
+  result is contextually false.
+
+The projecting pattern is viable when the protocol call is well-formed and
+its nested pattern is viable for the projection.
+
+A projection result is materialized once and tested as an lvalue. A false
+result is a non-match. Otherwise, the result is dereferenced with the value
+category of the original call expression and the nested pattern is matched
+against that projection.
+
+For example:
 
 ```cpp
 any value;
@@ -2243,18 +2210,20 @@ match (value) {
 }
 ```
 
-- A bare `case int integer` does not look inside the `any`; it tries to match
-  the `any` object itself and fails.
-- `{ T: P }` calls `try_cast<T>(a)`.
-- A direct declaration such as `{ const string& text }` calls `try_init<const string&>(a)`.
-- `{}` calls the optional `has_value` operation and matches when it returns
-  `false`.
-- `{ auto&& value }` and `{ _ }` are ill-formed because there is no C++ type
-  for a generic projection of the open remainder.
+Both projection operations receive their type argument unchanged. This lets a
+specialization interpret it as a selected type in the first form and as a
+declaration type in the second. For example, `any` can reject the selector
+`{ int&: P }` while supporting the declaration `{ int& value }`.
 
-The protocol for closed and open alternative types is described in
-[`alternative_traits` Protocol]. The syntax and alternatives considered
-are discussed in [Alternative Projection and Polymorphic Casts].
+An open alternative type cannot give its unknown remainder one static
+projection type. In the form `{ P }`, `P` must therefore be a declaration with
+a concrete declared type. Forms such as `{ auto&& value }` and `{ _ }` are
+ill-formed, as are type-constraint, named, and indexed selectors. `{}` is
+ill-formed when the specialization omits `has_value`.
+
+[Open Protocol] describes the operation contracts and example specializations.
+The syntax and alternatives considered are discussed in
+[Alternative Projection and Polymorphic Casts].
 
 ---
 
@@ -2262,7 +2231,7 @@ are discussed in [Alternative Projection and Polymorphic Casts].
 
 This section describes how a type advertises its states and supplies their
 projections. The information is used by [Value and Predicate Patterns],
-[Alternative Pattern], and [Exhaustiveness Checking].
+[Alternative Pattern], and [Viability, Exhaustiveness, and Usefulness].
 
 Two forms of the protocol are proposed: **closed** and **open**.
 The closed protocol supports examples such as `optional`, `expected`,
@@ -2314,20 +2283,19 @@ struct alternative_traits<my::Result<T, E>> {
 
 ### States and Projections
 
-The `alternatives` array describes the required state domain. Element `I`
+The `alternatives` array describes the advertised state domain. Element `I`
 describes state `I`. Its `info` is one of:
 
-- null, for a state selected only by index or name;
-- a reflected type, for a projectable state selected by `{ T: P }`; or
-- a reflected constant value, for a state selected by that value pattern.
+- null, for a state with no advertised type or value;
+- a reflected type, for a projectable state; or
+- a reflected constant value, for a state with a value label.
 
-The `alternative_info` constructor canonicalizes reflected constant values.
 A state is projectable if and only if its `info` reflects a type, including
 `void`. It requires a compatible projection and must have `empty == false`.
 States with null `info` and value-selected states are not projectable, even if
-the specialization provides `get` for them. `{}` selects a state with
-`empty == true`. Such a state can also advertise a value, as for `nullopt`, or
-it can be anonymous.
+the specialization provides `get` for them. `empty == true` identifies an empty
+state. Such a state can also advertise a value, as for `nullopt`, or it can
+have null `info`.
 
 The remaining members have the following contracts:
 
@@ -2336,53 +2304,28 @@ The remaining members have the following contracts:
   called only when that state is active and preserves the cv-qualification and
   value category specified by the customization.
 - `has_residual_states` states whether runtime states can exist outside the
-  advertised set. Such states are residual rather than required.
+  advertised set. [Required and Residual Domains] describes their role in
+  checking a match.
 
-### Named Selectors {#alternative-traits-named-selectors}
+### Named State Values
 
-The type returned by `index(subject)` also provides named selectors. For a
-scoped enumeration, `.name` names an enumerator. For a class type, `.name` or
-`.name<I>` names a constant state value supplied by that type. An integral
-discriminator provides no named selectors. All selectors for a projectable
-state use its `get` operation.
+The type returned by `index(subject)` can expose constant state values for the
+named selectors described in [Selectors]. The `my::Result` specialization above
+exposes `state::value` and `state::error`. A class discriminator can instead
+provide member constants or variable templates, as in the `variant`
+specialization below.
 
-Names do not introduce a second state machine. Plain names can be enumerators
-in the discriminator type returned by `index`, and a type that wants synonyms
-defines them directly.
+These names denote values of the same discriminator, rather than a separate
+set of state identifiers. A type that wants synonyms defines names for the
+same value. [Required and Residual Domains] describes how aliases affect
+coverage.
 
-```cpp
-enum class state : bool {
-  value = false, ok = false,
-  error = true, err = true,
-};
-```
-
-Because these names denote the same indexed states,
-usefulness, exhaustiveness, and projection treat them identically:
-
-```cpp
-match (state_value) {
-  case state::value => handle_value();
-  case state::error => handle_error();
-  case state::err => handle_err(); // warning: redundant
-}
-```
-
-The first two cases are exhaustive because the enum's full value range is
-`false` and `true`. Replacing `error` with `err` has the same coverage.
-
-The same applies to named selectors. Both `.error` and `.err` select state true,
-so `{ .err }` makes a later `.error` case redundant. Either name can select
-the state without projection or select its projection with `: P`.
-
-### Advertised Value States
+### Advertised Values
 
 An element can advertise a constant as the source-level label for its state.
-The constant in `alternatives[I]` labels state `I`; `index(subject)` still
-determines whether that state is active. A value pattern selects the state when
-its constant has the same canonical type and value as the advertised constant.
-The advertised constant is not compared with the subject or the discriminator,
-and matching it does not invoke `operator==`.
+The `alternative_info` constructor canonicalizes the reflected constant's type
+and value. [Advertised Value States] describes how a value pattern uses that
+label.
 
 A connection can expose a closed domain without making the connection itself
 comparable with its state labels:
@@ -2413,7 +2356,7 @@ struct std::alternative_traits<my::Connection> {
 };
 ```
 
-The advertised values can then be used directly and prove exhaustiveness:
+The advertised values can then be used directly:
 
 ```cpp
 void monitor(const my::Connection& connection) {
@@ -2426,13 +2369,7 @@ void monitor(const my::Connection& connection) {
 ```
 
 No `get` operation is provided because these states are value-selected and
-non-projectable. If several states advertise the same canonical value, the
-value pattern selects and covers all of them.
-
-When a specialization does not advertise the pattern constant, matching
-continues with the remaining rules in [Value and Predicate Patterns]. This
-includes open specializations, which advertise no value states. Such matching
-does not cover an advertised state for exhaustiveness analysis.
+non-projectable.
 
 ## Open Protocol
 
@@ -2451,33 +2388,16 @@ struct alternative_traits<any> {
 };
 ```
 
-For `{ T: P }`, matching calls `try_cast<T>(subject)`, preserving `T` exactly.
-For a direct declaration pattern `{ T name }`, matching instead calls
-`try_init<T>(subject)`, again preserving `T` exactly. This distinction lets a
-specialization interpret `T` as a selected type in the first form and as a
-declaration type in the second. For example, `any` can reject the selector
-`{ int&: P }` while supporting the declaration `{ int& value }`.
-
-The result must be contextually convertible to `bool` and dereferenceable. It
-is materialized once and tested as an lvalue. A false result is a non-match;
-otherwise the result is dereferenced with the value category of the original
-call expression and the projection is matched. This permits the result object
-to preserve the subject's cv-qualification and value category.
-
-No overlap is inferred between `try_cast<T>` and `try_init<T>`. They are
-separate open views unless the specialization gives them equivalent behavior.
+`try_cast<T>` and `try_init<T>` supply typed projections. Their use by patterns
+is described in [Open Alternative Types and `any`]. The result must support a
+contextual conversion to `bool` as an lvalue and dereferencing with the value
+category of the call expression. Its dereference operation supplies the
+projection and can preserve the subject's cv-qualification and value category.
 
 An open specialization can additionally provide `has_value(subject)`. If
-present, `{}` calls that operation and matches when its result is contextually
-false. The empty state is distinct from every successful `try_cast` and
-`try_init`.
-
-An open alternative type has no generic projection because it cannot give the unknown
-remainder one static type. Consequently generic non-declaration `{ P }`, named
-selectors, and indexed selectors are ill-formed. `{}` is ill-formed when the
-specialization omits `has_value`. A top-level `_` handles all values not
-recognized by preceding typed projections. It remains necessary for
-exhaustiveness even when `has_value` is present.
+present, its result is contextually convertible to `bool` and indicates whether
+the subject is engaged. The empty state is distinct from every successful
+`try_cast` and `try_init`.
 
 For `any`, both operations can use the same small result type:
 
@@ -2540,8 +2460,8 @@ struct alternative_traits<exception_ptr> {
 ```
 
 The prototype implements the `any` specialization. Its library does not yet
-contain that facility, so the `exception_ptr` specialization remains a design
-sketch.
+provide `exception_ptr_cast`, so the `exception_ptr` specialization remains a
+design sketch.
 
 ## Standard Specializations
 
@@ -2631,8 +2551,7 @@ operation follows the built-in projection rules described in
 [Empty and Non-Projectable States].
 
 `optional` defines its own specialization because its null state is spelled
-`nullopt`. An ordinary `case 0` still asks whether an engaged `optional<int>`
-contains zero.
+`nullopt`.
 
 `expected` advertises two projectable states, including `void` for a successful
 `expected<void, E>`:
@@ -2659,10 +2578,8 @@ struct alternative_traits<expected<T, E>> {
 };
 ```
 
-Both names provide a `state` value. `{ .value: P }` projects the value and
-`{ .error: P }` projects the error. `expected` does not expose `.index<I>`;
-its state names are the better interface. It exposes only `value` and `error`,
-without synonyms such as `err`.
+`expected` exposes only the state names `value` and `error`, without synonyms
+such as `err` or a parameterized name `.index<I>`.
 
 Variant advertises every declared index, exposes those indices through the
 parameterized name `.index<I>`, and has a residual valueless state:
@@ -2729,7 +2646,7 @@ match (value) {
 ```
 
 Viability does not imply that a selected declaration's initialization is
-well-formed, as described in [Viability Versus Failed Initialization]. Guards
+well-formed, as described in [Declaration Patterns]. Guards
 and handlers are checked separately as described in [Case-Local Instantiation].
 
 Coverage from a preceding case cannot turn a non-viable pattern into a
@@ -2772,6 +2689,12 @@ Guarded cases do not contribute coverage, even when a guard is manifestly
 avoids changing exhaustiveness when a guard expression is refactored. A guarded
 case can nevertheless be redundant when preceding unguarded cases cover its
 pattern.
+
+Coverage uses the structural matching information supplied by each pattern
+form. An advertised value pattern covers the states selected by its label,
+including every state with the same canonical label. User-defined equality
+comparisons and predicate invocations do not contribute coverage, even when
+the pattern expression is constant.
 
 ### Required and Residual Domains
 
@@ -2819,6 +2742,18 @@ void match_variant(std::variant<int, std::string> value) {
 Both selections would remain exhaustive without their wildcard. The difference
 is that only the `expected` wildcard is redundant and should produce a warning.
 
+The valueless state has no projection, but can be handled with a whole-subject
+case:
+
+```cpp
+match (value) {
+  case auto&& whole if (whole.valueless_by_exception()) => recover();
+  case { auto&& alternative } => use(alternative);
+}
+```
+
+`std::visit` instead throws `std::bad_variant_access` for a valueless `variant`.
+
 More generally:
 
 - `bool` requires `true` and `false`.
@@ -2832,9 +2767,36 @@ More generally:
 - an open alternative type requires a top-level wildcard; typed projections cannot prove
   coverage of its open domain.
 
+The presence of `has_value` does not close an open domain. The open protocol
+does not by itself establish overlapping coverage between `try_cast<T>` and
+`try_init<T>`.
+
 For an enum whose enumerators cover its full legal range, a trailing wildcard
 is redundant. Otherwise it remains useful for unnamed values even after every
 enumerator is covered.
+
+Aliases denote the same value and therefore have the same coverage:
+
+```cpp
+enum class state : bool {
+  value = false, ok = false,
+  error = true, err = true,
+};
+
+match (state_value) {
+  case state::value => handle_value();
+  case state::error => handle_error();
+  case state::err => handle_err(); // warning: redundant
+}
+```
+
+The first two cases are exhaustive because the enum's full value range is
+`false` and `true`. Replacing `error` with `err` has the same coverage.
+
+The same applies to a specialization whose discriminator exposes these names.
+Both `.error` and `.err` select state 1, so `{ .err }` makes a later
+`{ .error }` case redundant. [Named State Values] describes how a provider
+exposes such aliases.
 
 Diagnostics should print source-like example witnesses:
 
@@ -2889,11 +2851,26 @@ potentially viable because another specialization could contain `char`. The
 same case on a non-dependent `variant<int, std::string>` is ill-formed because
 its pattern is not viable.
 
-As shown in [Viability Versus Failed Initialization], reference binding can
-also make a pattern viable only in some specializations. This does not make a
-`T&` pattern generally non-viable for an rvalue alternative type. In C++26,
-`optional<T&>` is valid and dereferencing it produces `T&` even when
-the `optional` itself is an rvalue:
+Reference binding can also make a pattern viable only in some
+specializations:
+
+```cpp
+template <class T>
+int classify(variant<T> value) {
+  return match (std::move(value)) {
+    case { T& reference } => 1;
+    case _                => 2;
+  };
+}
+```
+
+For an ordinary `variant<T>`, projecting from `std::move(value)` produces
+`T&&`. The `T&` declaration is not viable, so its case is omitted for that
+specialization and the wildcard is selected.
+
+This does not make a `T&` pattern generally non-viable for an rvalue
+alternative type. In C++26, `optional<T&>` is valid and dereferencing it
+produces `T&` even when the `optional` itself is an rvalue:
 
 ```cpp
 template <class T>
@@ -2912,6 +2889,31 @@ classify(optional<int&>{value}); // 1
 This permissiveness is specific to dependent matching. In the corresponding
 non-dependent match on an rvalue `optional<int>`, `{ int& }` cannot match any
 projectable state and is diagnosed even when a later wildcard is present.
+
+By contrast, if the pattern is viable but its selected initialization is
+invalid, the specialization is ill-formed:
+
+```cpp
+struct Job {
+  Job() = default;
+  Job(Job&&) = default;
+  Job(const Job&) = delete;
+};
+
+void process(auto&& value) {
+  match (std::forward<decltype(value)>(value)) {
+    case Job job => execute(std::move(job));
+    case _      => report_unsupported();
+  }
+}
+
+Job job;
+process(Job{}); // moves
+process(job);   // error: selected Job initialization requires a copy
+```
+
+Silently choosing the wildcard case in the second call would turn an ownership
+error into different program behavior.
 
 Some dependent patterns are nevertheless provably non-viable. A built-in
 array has a fixed, non-customizable decomposition arity:
@@ -3722,13 +3724,28 @@ match (value) {
 ```
 
 If arbitrary conversions were admitted, the `int` declaration could consume a
-`double` and make the second case dead. This paper instead uses
-[Static Declaration Matching] and lets usefulness analysis diagnose
-domination among the conversions that remain.
+`double` and make the second case dead. This paper instead uses the restricted
+type relationships in [Declaration Patterns] and lets usefulness analysis
+diagnose domination among the conversions that remain.
 
 Exception handlers provide precedent for using a restricted set of structural
 type relationships in source-ordered selection rather than general implicit
-conversion. They are not the specification model. Exception matching operates
+conversion, as specified in [except.handle]/3:
+
+```cpp
+try {
+  throw 42;
+} catch (bool b) {
+  // ...
+} catch (int i) {
+  // ...
+}
+```
+
+Even though `bool b = 42;` would be well-formed, `catch (bool b)` does not
+catch the `42`.
+
+Exception handlers are not the specification model. Exception matching operates
 on an exception object, has special rules for pointer-reference handlers,
 requires public bases independently of context, and permits `std::nullptr_t`
 to match pointer handlers. Those properties are not appropriate for a
@@ -3897,7 +3914,7 @@ the same most-derived object. Declaration-shaped runtime polymorphic casts are
 also familiar from other languages.
 
 `variant` provides the generic payload projection described in
-[Alternative Projection]. There is no way to give that projection the unknown
+[Closed Alternative Types]. There is no way to give that projection the unknown
 most-derived type of an open class hierarchy.
 
 In the code we looked at, a successful cast was normally followed by member
@@ -3964,7 +3981,7 @@ changes.
 
 We therefore do not perform runtime polymorphic casts from one pointer type to
 another. Pointer declarations admit the restricted static pointer relationships
-in [Static Declaration Matching], but no runtime downcast. To test the
+in [Declaration Patterns], but no runtime downcast. To test the
 pointee's runtime type, first match the non-null state and then match the
 resulting object:
 
