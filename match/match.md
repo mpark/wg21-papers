@@ -1484,7 +1484,7 @@ std::string_view describe(std::partial_ordering order) {
 
 See [Advertised Values] for how a specialization advertises these labels.
 
-## Declaration Patterns
+## Declaration Pattern
 
 Declaration patterns use ordinary variable and structured-binding declaration
 forms, such as:
@@ -1603,7 +1603,7 @@ discussed in [And-Pattern and Whole-Value Naming Patterns].
 [Restricted Initialization] discusses these restrictions and the precedent
 from exception handler matching.
 
-### Omitted-Name Declaration Patterns
+### Omitted Names
 
 A declaration pattern can omit its identifier. It has the same viability
 and well-formedness requirements as the corresponding named declaration,
@@ -1809,7 +1809,7 @@ case bool(first || second) => boolean_expression();
 The choice of `or` and its interaction with expression syntax are discussed in
 [Parentheses and Or-pattern Syntax].
 
-## Decomposition Patterns
+## Decomposition Pattern
 
 ```cpp
 $decomposition-pattern$:
@@ -1990,7 +1990,7 @@ A declaration outside braces instead matches the current subject. For a
 binds its active alternative.
 
 For a polymorphic class that also provides `alternative_traits`, a bare
-declaration uses the rules in [Declaration Patterns], including a runtime cast
+declaration uses the rules in [Declaration Pattern], including a runtime cast
 when applicable. Braces instead request the alternative protocol.
 
 ### Closed Alternative Types
@@ -2174,7 +2174,7 @@ match (result) {
 }
 ```
 
-### Open Alternative Types and `any`
+### Open Alternative Types
 
 An open alternative type such as `any` cannot enumerate all of its possible
 types. It still uses braces to make the runtime access explicit.
@@ -2389,7 +2389,7 @@ struct alternative_traits<any> {
 ```
 
 `try_cast<T>` and `try_init<T>` supply typed projections. Their use by patterns
-is described in [Open Alternative Types and `any`]. The result must support a
+is described in [Open Alternative Types]. The result must support a
 contextual conversion to `bool` as an lvalue and dereferencing with the value
 category of the call expression. Its dereference operation supplies the
 projection and can preserve the subject's cv-qualification and value category.
@@ -2646,7 +2646,7 @@ match (value) {
 ```
 
 Viability does not imply that a selected declaration's initialization is
-well-formed, as described in [Declaration Patterns]. Guards
+well-formed, as described in [Declaration Pattern]. Guards
 and handlers are checked separately as described in [Case-Local Instantiation].
 
 Coverage from a preceding case cannot turn a non-viable pattern into a
@@ -3598,7 +3598,7 @@ semantics unambiguously.
 
 Functional casts provide an expression spelling when the leading tokens would
 otherwise select pattern grammar, as described in [Wildcard Pattern],
-[Parenthesized Pattern], and [Decomposition Patterns]:
+[Parenthesized Pattern], and [Decomposition Pattern]:
 
 ```cpp
 case (north or south)         // parenthesized or-pattern
@@ -3688,7 +3688,7 @@ believe that is better than introducing a second declaration language for C++.
 
 ### Declaration Syntax
 
-The disambiguation in [Declaration Patterns] preserves familiar functional
+The disambiguation in [Declaration Pattern] preserves familiar functional
 casts such as `T(x)`, `T()`, `bool(x)`, and `auto(x)` without excluding
 array-reference and function-pointer declarations. It reaches the same result
 as the *nofun-type-id* direction in CWG issue 2228 for `(T())`, while still
@@ -3703,7 +3703,7 @@ case auto(R(*function)())  // expression pattern
 ```
 
 The `[[` ambiguity also occurs between attributes and nested structured
-bindings. [Declaration Patterns] describes how it is resolved for patterns.
+bindings. [Declaration Pattern] describes how it is resolved for patterns.
 
 The distinction between a whole subject and its projected payload is discussed
 in [Alternative Projection and Polymorphic Casts].
@@ -3725,7 +3725,7 @@ match (value) {
 
 If arbitrary conversions were admitted, the `int` declaration could consume a
 `double` and make the second case dead. This paper instead uses the restricted
-type relationships in [Declaration Patterns] and lets usefulness analysis
+type relationships in [Declaration Pattern] and lets usefulness analysis
 diagnose domination among the conversions that remain.
 
 Exception handlers provide precedent for using a restricted set of structural
@@ -3828,7 +3828,7 @@ decltype(auto) naive_forward_binding(Tuple&& tuple) {
 
 For `std::tuple<int&>`, this produces `const int&` from a const lvalue tuple
 and `int&&` from an rvalue tuple. Both should remain `int&`. The forwarding
-rules in [Decomposition Patterns] provide this behavior directly, so users do
+rules in [Decomposition Pattern] provide this behavior directly, so users do
 not need to reconstruct it from a structured-binding name.
 
 ## Alternative Projection and Polymorphic Casts
@@ -3981,7 +3981,7 @@ changes.
 
 We therefore do not perform runtime polymorphic casts from one pointer type to
 another. Pointer declarations admit the restricted static pointer relationships
-in [Declaration Patterns], but no runtime downcast. To test the
+in [Declaration Pattern], but no runtime downcast. To test the
 pointee's runtime type, first match the non-null state and then match the
 resulting object:
 
@@ -4358,7 +4358,7 @@ Similarly, a top-level `=>` in a declaration-shaped body can support a focused
 missing-`case` diagnostic without changing the grammatical classification.
 
 Declaration patterns use `TryParseDeclarationPatternSyntax` for the
-disambiguation described in [Declaration Patterns], then the ordinary
+disambiguation described in [Declaration Pattern], then the ordinary
 declarator parser. The `[[` probe is shared with nested structured-binding
 parsing.
 
