@@ -16,8 +16,8 @@ highlighting:
 # Revision History {- .collapsed}
 
 ## R6 → R7 {- .unlisted #r6-to-r7}
-  - Declaration-pattern viability now uses restricted ordinary
-    initialization. Non-reference declarations admit same-type, base-class,
+  - Declaration-pattern viability now uses restricted initialization.
+    Non-reference declarations admit same-type, base-class,
     and restricted pointer relationships; reference declarations require a
     reference-compatible subject.
   - Integral and enumeration value patterns use the operand compatibility
@@ -29,8 +29,8 @@ highlighting:
     argument-dependent lookup.
   - Declaration-versus-expression disambiguation follows the outer declarator
     form, preserving `T(x)` and `auto((x))` as expression patterns.
-  - Contextual parsing of `match constexpr` now preserves ordinary constexpr
-    declarations when `match` names a type.
+  - Contextual parsing of `match constexpr` now preserves existing
+    `constexpr` declarations when `match` names a type.
   - Redundant cases are now well-formed, with a recommended warning.
     Non-viable patterns remain ill-formed. A dependent pattern is rejected
     when no substitution can make it viable.
@@ -45,11 +45,11 @@ highlighting:
   - The restriction on non-trivial moves does not apply to guarded match test
     expressions. It still applies to guarded match-selection cases. Pattern
     conditions continue to allow non-trivial moves.
-  - Match cases retain source-order priority, but matching operations may be
+  - Match cases have source-order priority, but matching operations may be
     reordered and equivalent occurrences may be coalesced. Their results may
-    be retained across guard evaluation.
+    be reused after guard evaluation.
   - Variant's `alternative_traits` discriminator now converts to `size_t`,
-    making it usable as a `switch` condition while retaining `.index<I>`.
+    making it usable as a `switch` condition while keeping `.index<I>`.
   - Consolidate on *pattern viability* rather than alternating between
     viability and applicability. Viability is distinct from runtime matching,
     usefulness, and the validity of selected initialization.
@@ -88,15 +88,15 @@ highlighting:
     subjects form an unnamed product whose elements preserve the value
     categories of the corresponding expressions. In expression-only contexts
     the match selection is an expression. In a statement-or-expression context
-    it is a match selection statement, each handler is an ordinary statement,
+    it is a match selection statement, each handler is a normal statement,
     and the match selection does not require a trailing semicolon.
   - Declaration patterns replace `let` patterns. Their restricted declarator
-    supports ordinary pointer, reference, member-pointer, function-pointer,
+    supports pointer, reference, member-pointer, function-pointer,
     and array-reference forms, with a separate structured-binding form.
     Viability uses exact-match conversions plus direct derived-to-base
     reference binding. An omitted identifier checks the corresponding
     initialization without performing it. R5's combined `P let name` form is
-    not retained; whole-value naming is deferred.
+    removed. Whole-value naming is deferred.
   - Add recursively composable or-patterns, written `P1 or P2`. Subpatterns
     may introduce the same names with independently deduced types; the selected
     subpattern determines the types used to instantiate the guard and handler.
@@ -112,25 +112,25 @@ highlighting:
     `dynamic_cast`-equivalent runtime cast. Pointer declarations remain static; a
     pointer is first dereferenced through its nullable `{ P }` projection
     before its object can be matched polymorphically.
-  - The R5 optional pattern is removed. Parenthesized patterns are retained and
-    generalized to group every pattern form. The unbraced `T: P` selector is
-    replaced by the explicit braced form `{ T: P }`.
+  - The R5 optional pattern is removed. Parenthesized patterns are generalized
+    to group every pattern form. The unbraced `T: P` selector is replaced by the
+    explicit braced form `{ T: P }`.
   - A single-pattern test is written `match(E1, E2, case P)`. The
     `case` keyword separates the subject list from the pattern, while the
     parentheses delimit both from the surrounding expression. No new
     operator-precedence level is needed. The test is ill-formed when its
     pattern is not viable; `requires` remains the way to ask about viability.
-    R5's trailing guard is not retained on this form.
-  - Match selection statements accept ordinary statements as handlers. Match
-    selection expressions retain result-producing handlers and add null,
-    `static_assert`, and jump handlers. A declaration preamble can introduce
-    aliases, using declarations, and assertions shared by every case.
+    R5's trailing guard is omitted from this form.
+  - Match selection statements accept normal statements as handlers. Match
+    selection expressions continue to support result-producing handlers and
+    add null, `static_assert`, and jump handlers. A declaration preamble can
+    introduce aliases, using declarations, and assertions shared by every case.
   - An expression handler can be marked `not return`. Such a handler is
     evaluated as a discarded-value expression and does not participate in
     result-type deduction.
   - Pattern conditions use `case P = subject` in `if`, `while`, and
-    traditional `for` statements, and can be chained with `&&` and ordinary
-    conditions.
+    traditional `for` statements, and can be chained with other conditions
+    using `&&`.
   - Decomposition patterns and structured-binding declaration patterns support
     fixed and arity-inferred packs, including case-local pack names available
     to the guard and handler.
@@ -223,7 +223,7 @@ spellings rather than mechanical source transformations.
 These are working notes for R7 and are not part of the proposal.
 
 - Audit the R6-to-R7 revision history once the R7 design is settled.
-- Remove the temporary review-boundary horizontal rule before publishing R7.
+- Remove the temporary review marker before publishing R7.
 - Continue to omit match init-statements and block-scope pattern declarations
   from R7. They are implemented as prototype extensions but are not currently
   part of this proposal.
@@ -257,12 +257,11 @@ This paper proposes pattern matching for C++29, further refining the design
 presented in [@P2688R6].
 
 [@P2688R5] was considered for C++26 at the February 2025 Hagenberg meeting but
-did not reach consensus for forwarding to CWG. [@P2688R6] was a substantial
-revision rather than merely a re-targeting for C++29. It retained first-match
-semantics and recursive composition of patterns, while replacing `let` with
-ordinary declarations, adopting prefix `match` for statement and expression
-forms, making alternative matching explicit with braces, and requiring
-exhaustiveness and redundancy diagnostics.
+did not reach consensus for forwarding to CWG. [@P2688R6] made substantial
+changes to the design. It kept first-match semantics and recursive composition
+of patterns, while replacing `let` with existing declaration syntax, adopting
+prefix `match` for statement and expression forms, making alternative matching
+explicit with braces, and requiring exhaustiveness and redundancy diagnostics.
 
 # The Proposal in Examples
 
@@ -624,9 +623,9 @@ C++ provides the operations underlying pattern matching through separate
 language and library facilities: `switch` for integral and enumeration values,
 `if` for arbitrary predicates, structured bindings for decomposing tuples,
 `std::visit` for selecting alternatives of `std::variant`, and `dynamic_cast`
-for class hierarchies. These facilities do not compose declaratively. Code
-that needs more than one generally spreads its tests, decompositions,
-declarations, and control flow across several statements.
+for class hierarchies. Code that needs more than one of these generally
+spreads its tests, decompositions, declarations, and control flow across
+several statements.
 
 This proposal brings those operations into one pattern language used by
 selections, tests, and conditions. A pattern describes
@@ -636,8 +635,9 @@ succeeds.
 
 The design has two primary goals:
 
-  - Use familiar C++ syntax such as `match (E) { /* cases */ }` and ordinary
-    declarations, instead of dedicated syntax such as `let` and `? $pattern$`;
+  - Use familiar C++ syntax such as `match (E) { /* cases */ }` and existing
+    declaration forms, instead of dedicated syntax such as `let` and
+    `? $pattern$`;
   - Increase safety by making non-exhaustive selections ill-formed and
     encouraging implementations to warn about redundant cases.
 
@@ -649,13 +649,13 @@ The paper also preserves the following directions from earlier EWG discussions:
   - Pattern matching is available generally in the language. At the July 7, 2021
     EWG teleconference, EWG expressed support for matching outside a dedicated
     `inspect` construct (`match` in this paper).
-  - Expressions retain their ordinary meaning. Earlier EWG feedback
+  - Expressions have the same meaning as elsewhere in C++. Earlier EWG feedback
     emphasized that declarations should visibly introduce names and that an
     identifier should not silently declare or shadow a variable merely because
     it appears in a pattern.
 
-[@P2688R5] used `let` to make name introduction explicit. This paper retains that
-distinction between declarations and expressions while using ordinary
+[@P2688R5] used `let` to make name introduction explicit. This paper keeps that
+distinction between declarations and expressions while using existing
 declaration syntax to express type, ownership, references, and forwarding.
 A bare identifier remains an expression that refers to an existing name.
 
@@ -815,11 +815,11 @@ not implicitly project an alternative. Thus `case auto&& whole` binds
 the `optional` itself, while `case { auto&& payload }` binds the `pair` when
 it is engaged.
 
-Name introduction follows ordinary declaration syntax. `case x` refers to an
+Name introduction follows existing declaration syntax. `case x` refers to an
 existing entity, while `case auto x` introduces a new `x`. Named declarations
 initialize only after the complete pattern matches. Their names are
 available in the guard and handler. Declaration matching uses restricted
-ordinary initialization rather than general implicit conversion.
+initialization rather than general implicit conversion.
 Declaration patterns can also match polymorphic class subjects using
 `dynamic_cast` semantics.
 
@@ -868,7 +868,7 @@ than a *braced-init-list*. [Multiple Subjects] describes how the subjects are
 matched.
 
 `match` denotes an identifier token whose spelling is `match`. It is not
-reserved as a keyword. The overlap with ordinary C++ syntax is resolved as
+reserved as a keyword. The overlap with existing C++ syntax is resolved as
 described in [Contextual Parsing of `match`].
 
 ## Match Selection Statements and Expressions
@@ -950,13 +950,13 @@ $match-selection-expr-handler$:
 A match selection statement has no result type, and each handler is any
 *statement*. This includes declaration statements, compound statements,
 control statements, and jump statements. An expression statement has its
-value discarded in the ordinary way.
+value discarded in the normal way.
 
 Only the selected handler is evaluated. Cases do not fall through.
 
 A handler is a protected control-flow entry. A `goto` or enclosing `switch`
 cannot jump directly to a label inside a handler and bypass pattern selection.
-Jumps out perform ordinary cleanup. The `match` itself is not a target for an
+Jumps out perform normal cleanup. The `match` itself is not a target for an
 unlabelled `break` or `continue`. These jumps keep their normal targets.
 
 A null handler is written `=> ;`. A jump statement must be valid in the
@@ -968,7 +968,7 @@ selection expression, e.g. `-> int`. Omitting it is equivalent to specifying
 
 Result-type deduction follows function return-type deduction. Each
 participating handler must deduce the same type. Other placeholders, such as
-`decltype(auto)`, use their ordinary deduction rules. A braced initializer
+`decltype(auto)`, use their normal deduction rules. A braced initializer
 cannot deduce a placeholder result type.
 
 A null handler and a successful `static_assert` handler contribute `void` and
@@ -1035,7 +1035,7 @@ match (value) {
 
 A name introduced by a match case's pattern is visible in that case's guard
 and handler, but not in another case. Declarations introduced by the guard's
-init-statement or condition follow ordinary `if` scope rules and are visible
+init-statement or condition follow normal `if` scope rules and are visible
 in the selected handler.
 
 The coverage rules for guarded cases are described in
@@ -1172,8 +1172,8 @@ or-pattern combinations of those forms. A declaration such as `auto whole`
 cannot expose the unnamed product type.
 
 A bit-field is represented by value because it cannot initialize a reference
-member. A pack expansion retains the product interpretation even when it
-expands to zero or one element:
+member. A pack expansion still forms a product even when it expands to zero
+or one element:
 
 ```cpp
 match (values...) {
@@ -1200,7 +1200,7 @@ static_assert(classify(std::pair(1, 1)) == 1);
 This preserves arity matching for every pack size: `[]`, `[_]`, and `[_, _]`
 continue to distinguish zero, one, and two subjects.
 
-An ordinary comma expression remains one subject when parenthesized:
+A comma expression remains one subject when parenthesized:
 
 ```cpp
 match ((first(), second())) {
@@ -1212,19 +1212,19 @@ match ((first(), second())) {
 
 `match` remains an identifier and can already name a type, function, or
 object. A parser therefore recognizes a prefix match selection tentatively and
-returns to ordinary C++ parsing if the prefix does not select
-the match grammar. This classification does not build the subject, perform
-overload resolution, or emit diagnostics.
+returns to normal parsing if the prefix does not select the match grammar.
+This classification does not build the subject, perform overload resolution,
+or emit diagnostics.
 
 For valid programs, the recognition flow is:
 
 ```
 start at '@`match`@', then skip an optional '@`constexpr`@'
 |
-+- next token is not '@`(`@' => ordinary parsing
++- next token is not '@`(`@' => normal parsing
 `- scan through the balanced non-empty '@`( tokens )`@'
    |
-   +- no matching '@`)`@' => ordinary parsing
+   +- no matching '@`)`@' => normal parsing
    +- next token is '@`{`@'
    |  |
    |  +- in $expr-only$ context => match selection expression
@@ -1234,17 +1234,17 @@ start at '@`match`@', then skip an optional '@`constexpr`@'
    |     +- '@`match`@' is not a type name => match selection statement
    |     `- tentatively parse '@`( E )`@' as a $declarator$
    |        |
-   |        +- is a $declarator$ => ordinary parsing
+   |        +- is a $declarator$ => normal parsing
    |        +- not a $declarator$ => match selection statement
    |
    +- next token is '@`->`@'
    |  |
-   |  +- in $stmt-or-expr$ context => ordinary parsing
+   |  +- in $stmt-or-expr$ context => normal parsing
    |  `- in $expr-only$ context
    |     +- tentatively parse $type-id$ followed by '@`{`@' => match selection expression
-   |     `- otherwise => ordinary parsing
+   |     `- otherwise => normal parsing
    |
-   `- anything else => ordinary parsing
+   `- anything else => normal parsing
 ```
 
 The tentative declarator branch preserves existing declarations such as:
@@ -1262,7 +1262,7 @@ can begin with a lambda. `[[` does commit because it begins an attributed
 match case.
 
 A trailing result type is recognized only when a complete *type-id* is
-followed by `{`. This preserves ordinary member access:
+followed by `{`. This preserves normal member access:
 
 ```cpp
 return match (value) -> Result { case _ => Result{}; }; // match selection
@@ -1322,9 +1322,8 @@ $expression-pattern$:
     $inclusive-or-expression$
 ```
 
-Value and predicate patterns have the same form. A value pattern ordinarily
-compares the current subject with `$E$`, while a predicate pattern invokes
-`$E$` on that subject.
+Value and predicate patterns have the same form. A value pattern tests for the
+value `$E$`, while a predicate pattern invokes `$E$` on the current subject.
 
 The grammar leaves top-level `or` to [Or-pattern] and reserves `and` for a
 future extension and consistency.
@@ -1350,13 +1349,13 @@ Let `$S$` be the current subject.
    The parenthesized `($E$)` intentionally suppresses argument-dependent lookup.
 5. Otherwise, the pattern is not viable.
 
-Equality has priority over invocation, so an ordinarily comparable constant
-remains a value pattern even if it's also callable.
+Equality has priority over invocation, so a constant that can be compared with
+the subject remains a value pattern even if it's also callable.
 
 The second step uses the operand compatibility and conversion rules of built-in
 `<=>`. It does not actually evaluate `<=>` or consider a user-defined overload.
-One practical difference is that this rule prevents a `bool` value to match
-against other integral values. It also prevents comparisons that would involve
+One practical difference is that this rule prevents a `bool` value from
+matching other integral values. It also prevents comparisons that would involve
 narrowing conversions, which is also a safer option.
 
 Enumeration values are compared using built-in equality rather than an
@@ -1365,7 +1364,7 @@ an integer value pattern such as `case 1` cannot match against an `enum` subject
 The pattern must explicitly be a value of the enumeration type.
 
 Value and predicate patterns can be used together. Here, `"--help"` is compared
-with `option` using ordinary equality, while `starts_with("-I")` produces a
+with `option` using `operator==`, while `starts_with("-I")` produces a
 predicate:
 
 ```cpp
@@ -1443,7 +1442,7 @@ Only the pattern expression is required to be constant, not the predicate
 invocation. The coverage rules are described in
 [Viability, Exhaustiveness, and Usefulness].
 
-The use of ordinary expressions for value and predicate patterns is discussed
+The use of normal expressions for value and predicate patterns is discussed
 in [Wildcard and Value Patterns].
 
 ### Advertised Value States
@@ -1465,7 +1464,7 @@ any of those states.
 
 When the specialization does not advertise `$E$`, matching continues with the
 remaining steps above. This includes open specializations, which advertise no
-value states. For example, an ordinary `case 0` still asks whether an engaged
+value states. For example, `case 0` still asks whether an engaged
 `optional<int>` contains zero.
 
 The proposed `alternative_traits` specialization for `std::partial_ordering`
@@ -1488,7 +1487,7 @@ See [Advertised Values] for how a specialization advertises these labels.
 
 ## Declaration Pattern
 
-Declaration patterns use ordinary variable and structured-binding declaration
+Declaration patterns use existing variable and structured-binding declaration
 forms, such as:
 
 ```cpp
@@ -1503,7 +1502,7 @@ case int (&arr)[5]
 ```
 
 A declaration pattern first tests whether its declaration is viable for the
-current subject. Viability has more restrictive conditions than ordinary
+current subject. Viability has more restrictive conditions than normal
 declaration initialization. For example, `case bool b` is not viable for an
 `int` subject even though `bool b = 42;` would be well-formed.
 
@@ -1551,7 +1550,7 @@ null pointer constants, array-to-pointer conversion, and function-to-pointer
 conversion:
 
 ```cpp
-int* pointer = nullptr; // ordinary initialization permits conversion
+int* pointer = nullptr; // normal initialization permits conversion
 
 match (nullptr) {
   case int* p => use(p); // not viable: subject is std::nullptr_t
@@ -1637,7 +1636,7 @@ do not apply, a class declaration can apply the corresponding pointer-form
 
 This includes casts to public derived targets, virtual inheritance, pointer
 adjustment, and valid cross-casts. A failed cast is a non-match. After a
-successful cast, the declaration's cv/ref spelling has its ordinary effect:
+successful cast, the declaration's cv/ref spelling has its normal effect:
 `Circle&` binds the adjusted object, while `Circle` copies or moves from it.
 
 For example:
@@ -1658,11 +1657,12 @@ To match a pointee's runtime type, first use an alternative pattern to project
 the non-null state and then apply a class declaration pattern to that object.
 [Pointer Subjects] discusses this choice.
 
-This is an open-world operation. If `Square` derives from `Rectangle` in
-another translation unit or shared library, a `Square` passed as `Shape&` must
-still match `Rectangle&`. Comparing exact dynamic types or vtable pointers is
-not enough. Listing every currently known derived class is not exhaustive,
-so a base-class or wildcard fallback is still required.
+Matching must also account for derived classes defined elsewhere. If `Square`
+derives from `Rectangle` in another translation unit or shared library, a
+`Square` passed as `Shape&` must still match `Rectangle&`. Comparing exact
+dynamic types or vtable pointers is not enough. Listing every currently known
+derived class is not exhaustive, so a base-class or wildcard fallback is
+still required.
 
 `auto&&` matches the current `Shape` subject. It does not acquire the unknown
 most-derived type. A `Circle&` declaration can use static matching in one
@@ -1677,7 +1677,7 @@ void dispatch(auto& value) {
 }
 
 Circle circle;
-dispatch(circle);                       // ordinary exact binding
+dispatch(circle);                       // exact binding
 dispatch(static_cast<Shape&>(circle));  // runtime polymorphic cast succeeds
 ```
 
@@ -1698,7 +1698,7 @@ requesting a runtime polymorphic cast.
 
 ### Declaration vs Expression Ambiguity
 
-Declaration patterns use ordinary declarator forms. If the outer
+Declaration patterns use existing declarator forms. If the outer
 `$noptr-declarator$` is a terminal `( $ptr-declarator$ )`, the result is an
 expression pattern. An outer function or array suffix instead makes it
 declaration syntax. Parentheses within the enclosed `$ptr-declarator$` are
@@ -1799,8 +1799,8 @@ declarations are initialized. If its guard fails, matching continues with the
 next source case, not with another subpattern of the same or-pattern.
 
 The punctuator `||` has the same grammatical meaning as the alternative token
-`or`. Parentheses still group a pattern, so matching the result of an ordinary
-logical expression requires an unambiguous expression spelling:
+`or`. Parentheses still group a pattern, so matching the result of a logical
+expression requires an unambiguous expression spelling:
 
 ```cpp
 case first or second       => either_pattern();
@@ -1846,7 +1846,8 @@ match (point) {
 }
 ```
 
-Empty decomposition is the zero-element structural pattern:
+The empty decomposition pattern `[]` matches a subject that decomposes to
+zero elements:
 
 ```cpp
 case [] => empty_product();
@@ -1907,8 +1908,8 @@ void classify(const auto& tup) {
 ```
 
 An enclosing type pack similarly expands to a fixed number of declaration
-patterns. Following ordinary function parameter pack syntax, the declaration
-pack can introduce a local pack name:
+patterns. Following function parameter pack syntax, the declaration pack can
+introduce a local pack name:
 
 ```cpp
 template <typename... Types>
@@ -2076,7 +2077,7 @@ handler instantiations are needed. The protocol operations are described in
 - `{ T: P }` considers each projectable state whose advertised alternative
   type is exactly `T`, then applies `P` to the selected projection. Repeated
   alternatives are considered independently. Selection is by the exact
-  advertised type; `T` is not itself a declaration pattern.
+  advertised type. `T` is not itself a declaration pattern.
 - `{ C: P }`, where `C` is a type-constraint, considers each projectable state
   whose declared alternative type satisfies `C`, then applies `P` to its
   projection.
@@ -2467,7 +2468,7 @@ design sketch.
 
 ## Standard Specializations
 
-With both protocol forms established, the proposed standard specializations are:
+The proposed standard specializations are:
 
 | Subject | Model | Required states | Residual state |
 |:--------------------:|-------------------------------|:--------------------------:|:------------------:|
@@ -2485,8 +2486,8 @@ With both protocol forms established, the proposed standard specializations are:
 
 Raw pointers use built-in language semantics. We still provide an
 `alternative_traits<T*>` specialization so that a smart pointer with exactly
-the same state mapping can explicitly reuse it. Merely looking pointer-like
-does not opt a user-defined type into an exhaustive two-state promise.
+the same state mapping can explicitly reuse it. A user-defined type does not
+acquire that closed two-state domain just by providing pointer-like operations.
 The non-array `unique_ptr` and `shared_ptr` specializations inherit this model.
 
 `variant` uses its index and a projection whose precondition is the selected
@@ -2494,9 +2495,7 @@ index. `optional` advertises null index 0 and value index 1.
 `expected` advertises value index 0 and error index 1. A binary alternative type
 with named states can use a `bool`-backed enumeration as its index type.
 
-The built-in pointer behavior is equivalent to the following specialization.
-Again, the specialization exists for explicit reuse; the compiler does not
-need it to recognize a raw pointer:
+The built-in pointer behavior is equivalent to the following specialization:
 
 ```cpp
 template <class T>
@@ -2632,11 +2631,10 @@ evaluated.
 
 ## Viability, Exhaustiveness, and Usefulness
 
-Viability, exhaustiveness, and usefulness answer different questions. A
-pattern is *viable* for a subject when the static matching requirements of its
-pattern form are satisfied. Viability is independent of the subject's runtime
-value and preceding cases. A case in a non-dependent match whose pattern is
-not viable is ill-formed:
+A pattern is *viable* for a subject when the static matching requirements of
+its pattern form are satisfied. Viability is independent of the subject's
+runtime value and preceding cases. A case in a non-dependent match whose
+pattern is not viable is ill-formed:
 
 ```cpp
 variant<int, string> value;
@@ -2700,12 +2698,11 @@ the pattern expression is constant.
 
 ### Required and Residual Domains
 
-Required states and residual states answer different questions. Every
-advertised state is required, and covering every required state is sufficient
-for exhaustiveness. `has_residual_states` does not change that rule. Instead,
-it says whether runtime states may remain after the advertised states have been
-covered. Those residual states participate in usefulness even though they are
-not required for exhaustiveness.
+Every advertised state is required, and covering every required state is
+sufficient for exhaustiveness. `has_residual_states` does not change that rule.
+Instead, it says whether runtime states may remain after the advertised
+states have been covered. Those residual states participate in usefulness
+even though they are not required for exhaustiveness.
 
 An advertised domain can also be narrower than the return type of its
 discriminator. Exhaustiveness is checked against the advertised states, not
@@ -2800,7 +2797,7 @@ Both `.error` and `.err` select state 1, so `{ .err }` makes a later
 `{ .error }` case redundant. [Named State Values] describes how a provider
 exposes such aliases.
 
-Diagnostics should print source-like example witnesses:
+Diagnostics should give examples of missing patterns:
 
 ```text
 false
@@ -2810,8 +2807,7 @@ false
 [{ int }, false]
 ```
 
-The word "example" is important for domains where the witness is not the only
-missing value.
+The diagnostic says "example" because more than one value may be missing.
 
 ## Dependence and Case Instantiation
 
@@ -2866,7 +2862,7 @@ int classify(variant<T> value) {
 }
 ```
 
-For an ordinary `variant<T>`, projecting from `std::move(value)` produces
+For a `variant<T>`, projecting from `std::move(value)` produces
 `T&&`. The `T&` declaration is not viable, so its case is omitted for that
 specialization and the wildcard is selected.
 
@@ -2972,10 +2968,9 @@ enclosing specialization, before any viable source case is instantiated
 for alternative projections. It is not duplicated for each such case
 instantiation.
 
-The pattern declarations, guard, and handler form one syntactically bounded
-case instantiation context. Each instantiation separately handles result
-deduction, `decltype`, constraints, local statics, diagnostics, and
-structured-binding packs.
+The pattern declarations, guard, and handler are instantiated together.
+Result deduction, `decltype`, constraints, local statics, diagnostics, and
+structured-binding packs are handled separately in each case instantiation.
 
 An earlier case can determine which later case instantiations are needed:
 
@@ -3013,7 +3008,7 @@ specialization itself can be ill-formed.
 
 A *candidate domain* is a conservative upper bound on the values represented
 by one potential case instantiation before its pattern is specialized. It
-retains the alternative state and structural path that identify the candidate,
+records the alternative state and structural path that identify the candidate,
 while treating pattern constraints not needed to identify it as wildcards. It
 is not necessarily a type. Candidate domains distinguish repeated alternatives
 of the same type, empty states, and paths through products and nested
@@ -3036,8 +3031,8 @@ If usefulness cannot be determined, the guard and handler are instantiated.
   arguments. Their evaluation order is unspecified.
 - An lvalue subject continues to denote the original object.
 - A prvalue subject is materialized in hidden storage.
-- Its original value category is retained when it is passed to a projection
-  operation. The projection operation determines the category of its result.
+- The subject is passed to a projection operation with its original value
+  category. The projection operation determines the category of its result.
 - In a match selection expression or match test expression, the hidden subject
   survives through the containing full-expression. In a match statement it
   survives through the statement.
@@ -3097,7 +3092,7 @@ match (std::move(value)) {
 }
 ```
 
-The spelling that tests before consuming is explicit:
+To test the guard before moving from the subject, bind a reference:
 
 ```cpp
 match (std::move(value)) {
@@ -3129,7 +3124,7 @@ The following matching operations can be shared:
   conversion.
 
 Two occurrences are equivalent when they apply the same operation, including
-the same state or type arguments, to the same subject or retained projection.
+the same state or type arguments, to the same subject or projection result.
 An implementation can evaluate them separately or reuse one occurrence's
 materialized result for others.
 
@@ -3143,8 +3138,8 @@ cannot consume state needed by a later occurrence. Such operations can
 otherwise have side effects. Within the bounds above, the number of their
 evaluations is unspecified.
 
-A retained materialized result remains alive through its last use. This does
-not extend the lifetime of an object to which the result refers.
+A materialized result saved for reuse remains alive through its last use.
+This does not extend the lifetime of an object to which the result refers.
 
 Distinct built-in value comparisons on one subject can be combined into one
 multiway test even though they are not equivalent occurrences.
@@ -3176,9 +3171,9 @@ or conversion function are not shareable. Each source occurrence is evaluated
 separately when its case is considered. Named declaration initializations and
 guards occur once, and only after their case's complete pattern matches.
 
-A failed guard does not require discarding a retained result or repeating a
+A failed guard does not require discarding a saved result or repeating a
 matching operation. If user code invalidates an object referred to by a
-retained projection, using that projection later has the usual C++ consequences.
+saved projection, using that projection later has the usual C++ consequences.
 
 ### Unmatched Residual Execution
 
@@ -3189,8 +3184,8 @@ rule for residual states:
 - an unmatched non-void match terminates;
 - an unmatched execution cannot succeed during constant evaluation.
 
-This handles `variant::valueless_by_exception()` without forcing that rare
-state into the ordinary projection syntax.
+This handles `variant::valueless_by_exception()` without requiring a
+projection for that rare state.
 
 ### `match constexpr`
 
@@ -3233,8 +3228,8 @@ constexpr auto loopback6 = concrete_address<v6>();
 
 `concrete_address<v4>()` returns an `IPv4`, while `concrete_address<v6>()`
 returns an `IPv6`. Only the selected handler participates in result-type
-deduction. An ordinary `match` would require both handlers to deduce the same
-result type.
+deduction. A `match` without `constexpr` would require both handlers to deduce
+the same result type.
 
 The selection is similar to an `if constexpr` on the discriminator, with the
 projection and binding in the selected branch:
@@ -3285,10 +3280,10 @@ cases would make visibility depend on case order even though control does not
 flow from one case to the next. Putting them first gives every case the same
 environment and leaves case order relevant only to matching.
 
-We do not allow ordinary object declarations. If we did, we would have to say
-whether initialization happens before or after subject evaluation, whether it
-happens when no case can match, and how the object's lifetime interacts with a
-selected handler or an escaping statement:
+We do not allow object declarations in the preamble. If we did, we would have
+to say whether initialization happens before or after subject evaluation,
+whether it happens when no case can match, and how the object's lifetime
+interacts with a selected handler or an escaping statement:
 
 ```cpp {.not_proposed}
 match (value) {
@@ -3297,8 +3292,8 @@ match (value) {
 }
 ```
 
-Such state can already be declared in the enclosing block. A name-only preamble
-also avoids creating a second init-statement mechanism with different
+Such state can already be declared in the enclosing block. Excluding object
+declarations also avoids a second init-statement mechanism with different
 control-flow rules.
 
 We also leave `consteval` blocks out of this proposal. They permit much more
@@ -3318,9 +3313,9 @@ value match {
 };
 ```
 
-This proposal gives the prefix form a contextual split instead. In a direct
-statement context it is a match selection statement; the right operand of each
-`=>` is an ordinary statement and the closing brace needs no semicolon:
+This proposal instead lets the surrounding context determine the form. In a
+direct statement context it is a match selection statement. The right operand
+of each `=>` is a normal statement and the closing brace needs no semicolon:
 
 ```cpp
 match (value) {
@@ -3339,11 +3334,11 @@ int result = match (value) {
 };
 ```
 
-This is more than punctuation. Statement-oriented code can use handlers with
-unrelated expression types without manufacturing a common result. The cost is
-that context determines whether the same prefix begins a statement or an
-expression. [Contextual Parsing of `match`] describes that distinction and how
-we preserve ordinary declarations and calls named `match`.
+A match selection statement can use handlers with unrelated expression types
+without deducing a common result. The cost is that context determines whether
+the same prefix begins a statement or an expression.
+[Contextual Parsing of `match`] describes that distinction and how we preserve
+existing declarations and calls named `match`.
 
 The corresponding match test expression is `match(E1, E2, case P)`. It uses
 the same subject and pattern rules as a match selection and does not introduce
@@ -3392,7 +3387,7 @@ implementation is free to lower suitable value patterns to a `switch`.
 
 ### Statement Handlers
 
-A match selection statement can use the ordinary *statement* grammar directly
+A match selection statement can use the existing *statement* grammar directly
 for its handlers:
 
 ```cpp
@@ -3408,10 +3403,10 @@ match (value) {
 
 This avoids a growing list of special handler forms. Declarations, compound
 statements, control statements, and `static_assert` all work without involving
-result-type deduction. Match selection expressions retain their narrower,
+result-type deduction. Match selection expressions still use their narrower,
 result-producing handler grammar.
 
-The most plausible alternative is to distinguish the two forms with `:`:
+An alternative is to distinguish the two forms with `:`:
 
 ```cpp
 match (value) {
@@ -3439,12 +3434,12 @@ visually dense next to alternative selectors:
 case { .value: int value }: consume(value);
 ```
 
-Using `=>` keeps the case boundary and non-fallthrough meaning uniform between
-match selection statements and expressions. It also lets a case be moved
-between the two forms without changing its separator. The tradeoff is that the
-grammar to the right of the same token depends on whether the enclosing match
-selection is a statement or an expression. That dependence already exists for
-the match selection itself and is explicit in [Pattern Matching Constructs].
+Using `=>` marks a non-fallthrough match case in both statement and expression
+forms. It also lets a case be moved between the two forms without changing its
+separator. The tradeoff is that the grammar to the right of the same token
+depends on whether the enclosing match selection is a statement or an
+expression. That dependence already exists for the match selection itself
+and is explicit in [Pattern Matching Constructs].
 
 The control-flow rules are described in [Handlers and Result Types].
 
@@ -3490,11 +3485,11 @@ declaration pattern:
 [[likely]] case [[maybe_unused]] int value => use(value);
 ```
 
-It also makes the beginning of each case easy to find in a larger selection
-and gives the feature one repeated form: `case P` appears in match selections,
-match test expressions, and pattern conditions.
+It also makes the beginning of each case easy to find in a larger selection.
+The same `case P` form appears in match selections, match test expressions,
+and pattern conditions.
 
-The introducer also helps distinguish a match selection from an ordinary
+The introducer also helps distinguish a match selection from a normal
 declaration such as `match (value) { 0 };`. [Contextual Parsing of `match`]
 discusses this ambiguity and the corresponding codebase audit.
 
@@ -3523,9 +3518,9 @@ labels, and a new token would be unfamiliar.
 
 ### `_` as the Wildcard
 
-This paper retains `_` as the wildcard spelling. This follows [@P2392R2] and the broad
-language precedent in Python, Rust, Scala, Swift, C#, Erlang, Prolog, Haskell,
-OCaml, and others. [@P1371R3] used `__`, following [@P1110R0], while
+This paper uses `_` as the wildcard spelling. This follows [@P2392R2] and the
+broad language precedent in Python, Rust, Scala, Swift, C#, Erlang, Prolog,
+Haskell, OCaml, and others. [@P1371R3] used `__`, following [@P1110R0], while
 [@P1469R0] proposed restricting `_` as an identifier in structured bindings.
 
 The wildcard remains distinct from a C++26 placeholder variable:
@@ -3548,7 +3543,7 @@ match (value) {
 }
 ```
 
-An ordinary expression can still perform that comparison through a guard:
+We can still perform that comparison through a guard:
 
 ```cpp
 match (value) {
@@ -3581,7 +3576,7 @@ Once literals, unqualified names, qualified names, and constant expressions
 are allowed, we have to distinguish an expression that refers to an existing
 name from a declaration that introduces a new one. This paper does not make a
 bare identifier introduce a name. Expressions and declarations keep their
-ordinary C++ meaning.
+normal C++ meaning.
 
 Expression patterns also provide a constrained predicate facility. Advertised
 states and structural integral or enumeration values are handled first. For
@@ -3640,7 +3635,7 @@ becomes especially important when an or-pattern is combined with a
 whole-value naming or another future pattern operator.
 
 This paper uses `or`, rather than `|`, because bitwise-or expressions are
-already common case values. Production LLVM and Chromium contain many cases
+already common case values. LLVM and Chromium contain many cases
 such as `case Read | Write`. Preserving that meaning gives a useful visual
 distinction:
 
@@ -3670,11 +3665,10 @@ not provide the same recursively composable operation.
 
 ## Declaration Patterns {#declaration-pattern-syntax}
 
-R5's `let` provided a simple name-introduction model. But "why does C++ need
-`let`?" was
-by far the most common first question. C++ declarations
-already express copies, moves, references, forwarding, constraints, and
-`decltype`, and those distinctions matter when a pattern introduces a name.
+R5 used `let` to introduce names. But "why does C++ need `let`?" was by far
+the most common first question. C++ declarations already express copies,
+moves, references, forwarding, constraints, and `decltype`. Those distinctions
+matter when a pattern introduces a name.
 
 Declaration patterns are more familiar:
 
@@ -3712,9 +3706,8 @@ in [Alternative Projection and Polymorphic Casts].
 
 ### Restricted Initialization
 
-Declarations use source-ordered first-match semantics rather than
-forming an overload set. Conversion-ranked initialization would make this
-surprising:
+Match cases have source-order priority rather than overload ranking.
+Allowing general implicit conversions would make this surprising:
 
 ```cpp
 variant<int, double> value;
@@ -3725,10 +3718,10 @@ match (value) {
 }
 ```
 
-If arbitrary conversions were admitted, the `int` declaration could consume a
-`double` and make the second case dead. This paper instead uses the restricted
-type relationships in [Declaration Pattern] and lets usefulness analysis
-diagnose domination among the conversions that remain.
+If arbitrary conversions were admitted, the `int` declaration could match a
+`double` and make the second case redundant. This paper instead uses the
+restricted type relationships in [Declaration Pattern] and lets usefulness
+analysis diagnose domination among the conversions that remain.
 
 Exception handlers provide precedent for using a restricted set of structural
 type relationships in source-ordered selection rather than general implicit
@@ -3751,7 +3744,7 @@ Exception handlers are not the specification model. Exception matching operates
 on an exception object, has special rules for pointer-reference handlers,
 requires public bases independently of context, and permits `std::nullptr_t`
 to match pointer handlers. Those properties are not appropriate for a
-declaration initialized from an existing expression.
+declaration initialized from a subject for pattern matching.
 
 In particular, permitting reference initialization when the referred-to and
 subject types are not reference-compatible would make source order silently
@@ -3764,7 +3757,7 @@ match (short_value) {
 }
 ```
 
-The first case would consume every `short` by binding to a converted `int`
+The first case would match every `short` by binding to a converted `int`
 temporary. The same issue is more surprising after alternative projection:
 
 ```cpp {.not_proposed}
@@ -3779,7 +3772,7 @@ match (value) {
 
 ### Viability and Initialization
 
-The distinction between viability and initialization follows ordinary
+The distinction between viability and initialization follows normal
 overload resolution:
 
 ```cpp
@@ -3860,11 +3853,11 @@ with `{ P }` and `{}`, using the same alternative model as `variant` and
 `expected`.
 R5's unbraced `T: P` becomes `{ T: P }`. The braces perform alternative
 selection, `T` selects an exactly advertised type, and `P` matches the
-projection. Variant's `.index<I>` is the corresponding opt-in escape hatch for
-duplicate types.
+projection. Variant's `.index<I>` selects a particular state when several
+alternatives have the same type.
 
-Braces are required for open alternative types such as `any` as well. Otherwise an
-ordinary-looking `int value` could silently perform a type-erased runtime
+Braces are required for open alternative types such as `any` as well. Otherwise,
+a normal-looking `int value` could silently perform a type-erased runtime
 operation. Polymorphic classes are different: a derived object is the same
 object denoted by the base reference, not a separately stored payload.
 
@@ -3879,10 +3872,10 @@ match (optional_bool) {
 }
 ```
 
-The required promise is not uniform. It works for `optional`, but pointer
-equality compares addresses rather than pointees, and an `expected` error
-would require a transformation between `unexpected<E>` and `E`. The explicit
-form remains `{ true }` and `{ false }`.
+This does not generalize to every alternative type. It works for `optional`,
+but pointer equality compares addresses rather than pointees, and an
+`expected` error would require a transformation between `unexpected<E>` and
+`E`. The explicit form remains `{ true }` and `{ false }`.
 
 We also considered one implicit `as` operation for testing, conversion, and
 name introduction. The conversion problem is the same as described in
@@ -3901,7 +3894,7 @@ match (shape) {
 
 The argument for braces is straightforward:
 
-- a bare declaration would always retain ordinary static meaning;
+- a bare declaration would always match statically;
 - braces would visibly mark every runtime operation, including `variant`,
   `any`, and polymorphic casts; and
 - a representation changed from a class hierarchy to a closed alternative type
@@ -3927,19 +3920,17 @@ Braces would make some migrations between a hierarchy and a `variant` easier.
 We found little evidence for such migrations, and they generally require other
 ownership and API changes anyway.
 
-There is one real loss: without braces there is no direct
-polymorphic-cast-and-subpattern form. The resulting object has to be named and
-then inspected in the handler. We did not find enough examples of this to
-justify putting braces on every polymorphic case.
+Without braces, there is no direct form that combines a polymorphic cast
+with a nested pattern. The resulting object has to be named and then
+inspected in the handler. We did not find enough examples of this to justify
+putting braces on every polymorphic case.
 
-The strongest argument for braces remains the generic example in
-[Polymorphic Class Matching], where a small type change
-introduces a runtime cast.
+The generic example in [Polymorphic Class Matching] illustrates a drawback:
+a small type change introduces a runtime cast.
 
-This may seem surprising, but a generic use of `typeid` similarly changes from
-static to dynamic behavior based on its instantiated operand type.
-`typeid(expression)` observes the dynamic type only when the expression is a
-glvalue of polymorphic class type:
+A generic use of `typeid` also changes from static to dynamic behavior based
+on its instantiated operand type. `typeid(expression)` observes the dynamic
+type only when the expression is a glvalue of polymorphic class type:
 
 ```cpp
 const std::type_info& get_type_info(auto& value) { return typeid(value); }
@@ -3956,7 +3947,7 @@ AST dumps should still make the runtime cast visible.
 ### Pointer Subjects
 
 Applying runtime polymorphic matching to pointer declarations would make null
-pointers difficult to interpret. Consider an ordinary generic pointer match:
+pointers difficult to interpret. Consider a generic pointer match:
 
 ```cpp
 template <class T>
@@ -3999,10 +3990,9 @@ void draw_shape(Shape* shape) {
 ```
 
 The braces above only perform the pointer's null/non-null projection.
-`Circle&` then matches the resulting `Shape&` using the ordinary polymorphic
-object rule. There is no special pointer-plus-polymorphism operation. If the
-pointer is itself stored inside another alternative type, both projections are
-visible:
+`Circle&` then matches the resulting `Shape&` using the polymorphic class
+matching rules. If the pointer is itself stored inside another alternative type,
+both projections are visible:
 
 ```cpp
 variant<Shape*, int> value;
@@ -4082,7 +4072,7 @@ especially tempting. Once such a pattern is viable, it always matches, so
 would nevertheless remain an evaluated context: `match(do_work(), case P)`
 evaluates `do_work()` and any required matching operations. By contrast,
 `requires { match(do_work(), case P); }` asks whether the test is well-formed
-and does not call `do_work()`. We retain that separation even for irrefutable
+and does not call `do_work()`. We keep that separation even for irrefutable
 patterns.
 
 An explicit `match requires` mode was also considered. It makes generic
@@ -4115,9 +4105,9 @@ opt-in strict mode.
 
 ## Multiple Subjects and Match Test Expressions
 
-Prefix syntax provides a natural boundary for matching several values. The
-product model described in [Multiple Subjects] keeps arity matching uniform
-for every pack size, including zero- and one-element expansions.
+Prefix syntax lets us match several subjects in one test. The product
+interpretation described in [Multiple Subjects] applies to every pack size,
+including zero- and one-element expansions.
 
 The corresponding Boolean test is:
 
@@ -4127,27 +4117,29 @@ match(first, second, case [P, Q])
 ```
 
 The comma before `case` ends the subject list, and the closing parenthesis ends
-the pattern. This gives both sides an explicit boundary:
+the pattern. Logical operators can therefore follow the test without becoming
+part of its pattern:
 
 ```cpp
 match(value, case A or B) || ready
 ```
 
-The `or` is an or-pattern and `||` is an ordinary logical operator. Logical
-expressions used as value patterns remain explicit, for example
-`match(value, case bool(A || B))`.
+The `or` is an or-pattern and `||` is a logical operator.
+Logical expressions used as value patterns remain explicit,
+for example `match(value, case bool(A || B))`.
 
 R5 instead used the postfix test `value match P`. Once `or` became an
 or-pattern, `value match A or B` could mean either one pattern or a logical
 disjunction. It also needed a new operator precedence and did not extend
 naturally to several subjects. Dropping `case` or writing `value match
-(case P)` retained those problems.
+(case P)` did not resolve those problems.
 
 We also considered `match(value; case P)` and `match(value) { case P }`. The
-semicolon is a strong parser boundary but unfamiliar in the common one-subject
-form. The handler-less match selection looks incomplete and gives braces a second
-set of exhaustiveness and result rules. `match(value, case P)` reads like a
-function call while `case` remains an unambiguous pattern introducer.
+semicolon would unambiguously separate the subjects from the pattern, but is
+unfamiliar in the common one-subject form. Using braces without a handler
+would make a test look like a match selection even though it has different
+exhaustiveness and result-type requirements. `match(value, case P)` reads like
+a function call while `case` remains an unambiguous pattern introducer.
 
 A pattern condition remains a separate facility because it makes its declared
 names available in later `&&` conditions and the successful controlled
@@ -4171,14 +4163,15 @@ contexts with this proposal and existing C++ facilities:
 | Selection | `match $E$ { /* cases */ }` | `match ($E$) { /* cases */ }` as a statement or expression |
 | Boolean test | `matches!($E$, $P$)` macro | `match($E$, case $P$)` |
 | Conditional binding | `if let $P$ = $E$`, `while let $P$ = $E$` | Pattern conditions in `if`, `while`, and traditional `for` |
-| Unconditional binding | `let $P$ = $E$;` | Ordinary declarations and structured bindings |
+| Unconditional binding | `let $P$ = $E$;` | Declarations and structured bindings |
 | Binding with an early exit | `let $P$ = $E$ else { /* exits */ };` | No standalone counterpart in this proposal |
-| Function and closure parameters | Irrefutable patterns | Ordinary parameters, with structured bindings in the body |
+| Function and closure parameters | Irrefutable patterns | Parameters, with structured bindings in the body |
 | Iteration | `for $P$ in $E$` | Range-based `for` declarations, including structured bindings |
 
-Rust requires irrefutable patterns in ordinary `let` declarations, parameters,
-and `for` bindings. These are primarily used to introduce names and decompose
-values. C++ already has declarations and structured bindings for those uses:
+Rust requires irrefutable patterns in `let` declarations without `else`,
+parameters, and `for` bindings. These are primarily used to introduce names
+and decompose values. C++ already has declarations and structured bindings for
+those uses:
 
 ```cpp
 auto&& [first, second] = pair;
@@ -4217,8 +4210,7 @@ accidentally by this paper.
 Patterns such as `< 0`, `1..10`, or a general range test would make numeric
 classification substantially more expressive. They also raise questions about
 open and closed endpoints, floating-point values, overloaded comparisons, and
-exhaustiveness. This proposal retains ordinary predicate objects for these
-cases.
+exhaustiveness. This proposal uses predicate objects for these cases.
 
 ## And-Pattern and Whole-Value Naming Patterns
 
@@ -4297,8 +4289,8 @@ We have implemented the proposal in Clang. The implementation is available at
 - Arbitrary statement handlers for match selection statements, and result deduction,
   null handlers, `static_assert`, non-returning expression handlers, jump
   actions, and `do` expressions for match selection expressions.
-- Pattern-matrix exhaustiveness and usefulness diagnostics with source-like
-  witnesses.
+- Pattern-matrix exhaustiveness and usefulness diagnostics, with examples of
+  missing patterns.
 - CFG and several analysis integrations.
 
 ## Integration Experience
@@ -4333,7 +4325,7 @@ non-exhaustiveness error without requiring a wildcard, as described in
 The prototype implements [Contextual Parsing of `match`] with
 `isPrefixMatchSelection`. It scans the balanced subject list, uses Clang's
 existing tentative declarator and type-id facilities only in the ambiguous
-cases, restores the parser, and then runs either the ordinary parser or the
+cases, restores the parser, and then runs either the existing parser or the
 match-selection parser normally. Diagnostic recovery can recognize additional
 ill-formed match-shaped input without changing the classification of valid
 programs.
@@ -4341,7 +4333,7 @@ programs.
 An audit of Chromium and LLVM found no types named `match` and hundreds of
 functions named `match`, mostly in LLVM matching libraries. It found no
 existing statement or expression using `match (...) {` or `match (...) ->`
-syntax. Ordinary function calls leave the classifier before its tentative
+syntax. Normal function calls leave the classifier before its tentative
 declarator and trailing-result-type branches.
 
 The token following the subject can be arbitrarily far from `match`. C++
@@ -4360,15 +4352,15 @@ Similarly, a top-level `=>` in a declaration-shaped body can support a focused
 missing-`case` diagnostic without changing the grammatical classification.
 
 Declaration patterns use `TryParseDeclarationPatternSyntax` for the
-disambiguation described in [Declaration Pattern], then the ordinary
+disambiguation described in [Declaration Pattern], then Clang's existing
 declarator parser. The `[[` probe is shared with nested structured-binding
 parsing.
 
 ### Source Cases and Case Instantiations
 
 One source case can produce several differently typed case instantiations. The
-prototype initially tried to mutate and replay source AST nodes; that model was
-fragile under later tree transformations. It now separates source cases from
+prototype initially tried to mutate and reuse source AST nodes. This was
+fragile during later tree transformations. It now separates source cases from
 `MatchCaseInstantiation` objects. The wording needs to describe the resulting
 case-local instantiation semantics without exposing those implementation
 objects.
@@ -4438,12 +4430,12 @@ The emitter currently handles the resulting plan as follows:
 
 | Planned operation | Current lowering |
 |---|---|
-| Closed alternatives on one discriminator | One cached discriminator, with consecutive tests coalesced into a switch for integral or enumeration discriminator types |
-| Compatible consecutive built-in integral values on one subject | A coalesced switch when the ordinary comparison conversions agree |
-| Open projections, type tests, and polymorphic casts | Shared binary tests with projection materialized only on success |
-| Nested decomposition and multiple subjects | Recursive tests on structural subject paths |
-| Compatible unguarded case instantiations | A shared handler, with same-typed reference bindings merged by PHIs |
-| Remaining tests and declarations | Ordered candidate emission |
+| Closed alternatives on one discriminator | Cache the discriminator and combine consecutive tests into a switch when its type is integral or enumeration |
+| Compatible consecutive built-in integral values on one subject | Combine the tests into a switch when the comparison conversions agree |
+| Open projections, type tests, and polymorphic casts | Share binary tests and materialize a projection only when its test succeeds |
+| Nested decomposition and multiple subjects | Test each nested subject recursively |
+| Compatible unguarded case instantiations | Share the handler and merge reference bindings of the same type using PHIs |
+| Remaining tests and declarations | Emit the remaining candidates in source order |
 
 Guard evaluation and reuse follow [Case Selection and Initialization] and
 [Matching Operation Order and Reuse]. The frontend emits the dispatch directly,
@@ -4459,7 +4451,7 @@ Polymorphic declaration patterns use the `dynamic_cast` semantics described in
 [Polymorphic Class Matching], including open-world derived
 classes and pointer adjustment. Reuse follows [Matching Operation Order and
 Reuse]. The compiler can reuse repeated targets, derive a base match from a
-successful more-derived match, use final-class fast paths, and employ LTO or
+successful more-derived match, optimize casts to final classes, and use LTO or
 profile-guided caches while preserving those semantics.
 
 ### Caching Discriminators and Projections
@@ -4472,9 +4464,9 @@ cache identity for discriminators from cache identity for selected projections.
 
 # Wording Status
 
-The wording in [@P2688R5] describes the R5 design and is not reproduced here as
-if it described this revision. The grammar and semantic rules in this paper
-serve as its design specification. Complete wording remains to be written.
+The wording in [@P2688R5] describes the R5 design and is not reproduced here.
+The grammar and semantic rules in this paper serve as its design
+specification. Complete wording remains to be written.
 
 The intended wording work includes the lexical treatment of `=>`, match
 selection statements and expressions, pattern grammar and semantics, scope,
