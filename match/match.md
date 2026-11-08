@@ -1323,44 +1323,45 @@ $expression-pattern$:
 ```
 
 Value and predicate patterns have the same form. A value pattern ordinarily
-compares the current subject with `$e$`, while a predicate pattern invokes
-`$e$` on that subject.
+compares the current subject with `$E$`, while a predicate pattern invokes
+`$E$` on that subject.
 
 The grammar leaves top-level `or` to [Or-pattern] and reserves `and` for a
-future extension.
+future extension and consistency.
 
-The expression `$e$` is required to be a constant expression as specified in
+The expression `$E$` is required to be a constant expression as specified in
 [expr.const], e.g. a literal, `constexpr` variable, enumerator, function, or
 `constexpr` function object.
 
 Matching proceeds as follows:
 
-Let `$s$` be the current subject.
+Let `$S$` be the current subject.
 
-1. If `$e$` is an advertised value of the current subject, test its state as
+1. If `$E$` is an advertised value of the current subject, test its state as
    described in [Advertised Value States].
-2. Otherwise, if both `$s$` and `$e$` are of integral or enumeration types,
+2. Otherwise, if both `$S$` and `$E$` are of integral or enumeration types,
    apply the operand compatibility rules of the built-in three-way comparison.
    If those rules accept the operands, compare the converted operands with
    built-in equality. Otherwise, the pattern is not viable.
-3. Otherwise, if `$s$ == $e$` is well-formed and contextually convertible to
+3. Otherwise, if `$S$ == $E$` is well-formed and contextually convertible to
    `bool`, use that comparison.
-4. Otherwise, if the *call-expression* `($e$)($s$)` is well-formed and
-   contextually convertible to `bool`, invoke `$e$` as a predicate.
-   The parenthesized `($e$)` intentionally suppresses argument-dependent lookup.
+4. Otherwise, if the *call-expression* `($E$)($S$)` is well-formed and
+   contextually convertible to `bool`, invoke `$E$` as a predicate.
+   The parenthesized `($E$)` intentionally suppresses argument-dependent lookup.
 5. Otherwise, the pattern is not viable.
 
 Equality has priority over invocation, so an ordinarily comparable constant
-remains a value pattern even if its type also has a call operator.
+remains a value pattern even if it's also callable.
 
 The second step uses the operand compatibility and conversion rules of built-in
-`<=>`. It does not evaluate `<=>` or consider a user-defined overload. This
-rejects comparisons between `bool` and any other integral type, as well as
-comparisons involving narrowing conversions.
+`<=>`. It does not actually evaluate `<=>` or consider a user-defined overload.
+One practical difference is that this rule prevents a `bool` value to match
+against other integral values. It also prevents comparisons that would involve
+narrowing conversions, which is also a safer option.
 
 Enumeration values are compared using built-in equality rather than an
-overloaded `operator==`, consistently with `switch`. Unlike `switch`, an
-integer value pattern such as `case 1` cannot match against an `enum` subject.
+overloaded `operator==`, consistently with `switch`. Unlike `switch` however,
+an integer value pattern such as `case 1` cannot match against an `enum` subject.
 The pattern must explicitly be a value of the enumeration type.
 
 Value and predicate patterns can be used together. Here, `"--help"` is compared
@@ -1451,17 +1452,18 @@ A type can advertise constant values as labels for its states through
 `std::alternative_traits`. Matching such a label tests the active state rather
 than comparing the subject with the label.
 
-Let `$S$` denote `std::remove_cvref_t<decltype($s$)>` and `$AT$` denote
-`std::alternative_traits<$S$>`. If `$AT$` is a complete type with a member named
-`alternatives`, a reflected constant in `alternatives[I]` labels state `I`.
-`$AT$::index($s$)` determines whether that state is active. A value pattern
-selects the state when its constant has the same canonical type and value as
-the advertised constant. The advertised constant is not compared with the
-subject or the discriminator, and matching it does not invoke `operator==`.
+Let `$AT$` denote
+`std::alternative_traits<std::remove_cvref_t<decltype($S$)>>`. If `$AT$` is a
+complete type with a member named `alternatives`, a reflected constant in
+`alternatives[I]` labels state `I`. `$AT$::index($S$)` determines whether that
+state is active. A value pattern selects the state when its constant has the
+same canonical type and value as the advertised constant. The advertised
+constant is not compared with the subject or the discriminator, and matching
+it does not invoke `operator==`.
 If several states advertise the same canonical value, the pattern selects
 any of those states.
 
-When the specialization does not advertise `$e$`, matching continues with the
+When the specialization does not advertise `$E$`, matching continues with the
 remaining steps above. This includes open specializations, which advertise no
 value states. For example, an ordinary `case 0` still asks whether an engaged
 `optional<int>` contains zero.
@@ -1490,14 +1492,14 @@ Declaration patterns use ordinary variable and structured-binding declaration
 forms, such as:
 
 ```cpp
-case int value
-case const Widget& reference
-case auto&& forwarded
-case auto&& [first, second]
-case std::integral auto integer
-case int Owner::* member
-case int (*function)()
-case int (&array)[5]
+case int i
+case const Widget& ref
+case auto&& fwd
+case auto&& [x, y]
+case std::integral auto j
+case int T::* mem
+case int (*fn)()
+case int (&arr)[5]
 ```
 
 A declaration pattern first tests whether its declaration is viable for the
@@ -1505,9 +1507,9 @@ current subject. Viability has more restrictive conditions than ordinary
 declaration initialization. For example, `case bool b` is not viable for an
 `int` subject even though `bool b = 42;` would be well-formed.
 
-Let `$E$` be the current subject expression and `$D$` the declared type after
+Let `$S$` be the current subject expression and `$D$` the declared type after
 placeholder deduction, if any. The declaration is statically viable when the
-implicit conversion sequence for copy-initializing `$D$` from `$E$` is a
+implicit conversion sequence for copy-initializing `$D$` from `$S$` is a
 standard conversion sequence and one of the following holds:
 
 1. `$D$` is not a reference type and, after removing top-level cv-qualifiers,
@@ -1517,7 +1519,7 @@ standard conversion sequence and one of the following holds:
    differ only by the permitted standard pointer, function-pointer, and
    qualification conversions.
 3. `$D$` is a reference type and the type referred to by `$D$` is
-   reference-compatible with the type of `$E$` as specified in [dcl.init.ref].
+   reference-compatible with the type of `$S$` as specified in [dcl.init.ref].
 
 Static declaration matching does not require a runtime test. If it does not
 apply, a class declaration can use the runtime cast described in
