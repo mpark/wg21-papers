@@ -1363,9 +1363,8 @@ overloaded `operator==`, consistently with `switch`. Unlike `switch` however,
 an integer value pattern such as `case 1` cannot match against an `enum` subject.
 The pattern must explicitly be a value of the enumeration type.
 
-Value and predicate patterns can be used together. Here, `"--help"` is compared
-with `option` using `operator==`, while `starts_with("-I")` produces a
-predicate:
+Here, `"--help"` is compared with `option` using `operator==`, while
+`starts_with("-I")` produces a predicate:
 
 ```cpp
 constexpr auto starts_with(std::string_view prefix) {
