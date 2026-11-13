@@ -36,6 +36,10 @@ highlighting:
     when no substitution can make it viable.
   - Usefulness now directs case instantiation using cumulative coverage,
     rather than only individual irrefutable cases.
+  - Define the dependence model briefly described in R6. All placeholder
+    declaration patterns introduce a template region, including direct
+    declarations and structured bindings. Earlier cases affect which
+    specializations are instantiated, but not whether the case is generic.
   - Fixed declaration pattern packs may now be named, as in `[Types... values]`.
   - Pattern conditions protect the successful controlled statement from
     control-flow entry that would bypass matching and initialization.
@@ -826,10 +830,11 @@ Declaration patterns can also match polymorphic class subjects using
 The language directly supplies the matching domains for `bool`, enumeration
 types, and pointers, including nullable projection for pointers.
 
-An alternative pattern such as `{ auto x }` can give `x` different types for
-different alternatives. Its case can be instantiated separately for those
-alternatives. Coverage from earlier cases can determine which instantiations
-are needed.
+A placeholder declaration pattern introduces a generic case, even when its
+current subject has a known type. An alternative pattern such as `{ auto x }`
+can give `x` different types for different alternatives. Coverage from earlier
+cases can determine which instantiations are needed, but does not change
+whether the case is generic.
 
 The following sections describe [Pattern Matching Constructs], [Patterns], and
 [`alternative_traits` Protocol]. [Match Semantics] covers checking, case
@@ -2037,6 +2042,13 @@ std::visit([](auto& payload) {
 On the right, `std::visit` explicitly projects the alternative and `match`
 applies `P1` and `P2` directly to that projection. Braces perform both steps
 without requiring the user to write the generic visitor or call `std::visit`.
+
+The comparison illustrates projection, not all source-case checking rules.
+For a known alternative type, each source case must still have a viable
+projection. An extra `{ char }` case on `variant<int, string>` is ill-formed,
+whereas the generic visitor can omit its `char` case in each specialization.
+See [Dependent Case Matching].
+
 The comparison covers only advertised alternatives. Handling the valueless
 state of `variant` is described in [Required and Residual Domains].
 
@@ -2795,22 +2807,31 @@ The diagnostic says "example" because more than one value may be missing.
 ### Dependent Case Matching
 
 A dependent match selection can contain a case whose pattern is viable in one
-specialization and not another:
+specialization and not another. In a non-dependent match, the corresponding
+non-viable case is an error:
 
 ```cpp
-template <class T>
-int classify_value(T value) {
-  return match (value) {
-    case int         => 0;
-    case std::string => 1;
-    case _           => 2;
-  };
+match (42) {
+  case int i         => ;
+  case std::string s => ; // error: not viable
 }
 ```
 
-For `T` equal to `int`, the `std::string` case is omitted; for `T` equal to
-`std::string`, the `int` case is omitted. Each pattern can be viable in another
-specialization.
+The same cases are permitted when the current subject is dependent:
+
+```cpp
+[](auto value) {
+  match (value) {
+    case int i         => ;
+    case std::string s => ;
+  }
+}(42);
+```
+
+The `std::string` case can match another specialization of the lambda's call
+operator, so it is permitted in the definition and omitted for the `int`
+specialization. Calling the lambda with `42` does not change the context in
+which its body was written.
 
 The same rule applies recursively after alternative projection:
 
@@ -2926,32 +2947,40 @@ static_assert(arity(tuple(1, 2)) == 2);
 
 ### Case-Local Instantiation
 
-For a non-dependent closed subject, a generic projection such as `{ auto x }`
-introduces alternative dependence only when `alternatives` advertises more
-than one projectable state. A single projectable state leaves the declaration,
-guard, and handler non-dependent:
+A placeholder declaration pattern introduces a template region for the
+case's pattern, guard, and handler. This includes direct declarations such as
+`case auto whole`, structured bindings such as `case auto& [x, y]`, and nested
+declarations such as `case [auto x, auto y]` and `case { auto x }`. Omitting a
+name or adding a selector does not change this rule.
 
-| Subject | Projectable states | Case context for `{ auto x }` |
-| ------- | ------------------ | ----------------------------- |
-| `optional<int>` | 1 | Non-dependent |
-| `variant<int>` | 1 | Non-dependent |
-| `variant<int, int>` | 2 | Alternative-dependent |
-| `variant<int, string>` | 2 | Alternative-dependent |
+The region is dependent even when the current subject has a known type.
+Placeholder deduction uses its normal rules in each required specialization.
+A direct declaration still deduces from its current subject, rather than
+projecting an alternative. Earlier cases affect which specializations are
+needed, but do not change whether the case is generic.
+[Placeholder Declarations] discusses this choice.
 
-The count is of entries whose `info` reflects a type, as described in
-[States and Projections], not distinct types or return types inferred from
-`get<>()`. Repeated alternatives remain separate even when their projections
-have the same type. This rule does not remove dependence inherited from an
-enclosing template or an outer alternative projection.
+Matching requirements that do not depend on placeholder deduction are still
+checked when the case is written. For example, `[auto x, auto y, auto z]` is
+ill-formed for a known `pair<int, int>` subject. Non-dependent names and
+expressions follow the normal checking rules for templates.
+
+A candidate fixes the alternative selections and, for or-patterns containing
+declarations, the subpatterns used to check a source case. A direct
+`auto x` on a known `int` subject has one candidate, while `{ auto x }` on
+`variant<int, string>` has separate candidates for its two projections.
+Rejecting an incompatible projection does not reject the source case if
+another selected projection is viable, as described in [Alternative Pattern].
 
 In a dependent match selection, the preamble is instantiated once for the
 enclosing specialization, before any viable source case is instantiated
 for alternative projections. It is not duplicated for each such case
 instantiation.
 
-The pattern declarations, guard, and handler are instantiated together.
-Result deduction, `decltype`, constraints, local statics, diagnostics, and
-structured-binding packs are handled separately in each case instantiation.
+When needed, the guard and handler are instantiated with the pattern's
+bindings. Result deduction, `decltype`, constraints, local statics,
+diagnostics, and structured-binding packs are handled separately in each case
+instantiation.
 
 An earlier case can determine which later case instantiations are needed:
 
@@ -2967,6 +2996,21 @@ auto result = match (value) {
 The second handler is instantiated for `string` and `vector<int>`, not for
 `int`. This gives us the useful instantiation behavior of an overloaded visitor
 without turning the cases into an overload set.
+
+The same rule applies to a direct placeholder on a known subject:
+
+```cpp
+match (42) {
+  case int i  => ;
+  case auto x => ; // warning: redundant case
+}
+```
+
+No specialization of the second case is needed. If it were needed, `x` would
+be deduced as `int`. Unlike the non-viable `std::string` case in
+[Dependent Case Matching], this is a generic case whose specialization is
+omitted because it is covered. Its dependent checks and handler are not
+instantiated.
 
 Coverage is cumulative. Several refutable patterns can together make a later
 case instantiation useless:
@@ -3806,6 +3850,89 @@ For `std::tuple<int&>`, this produces `const int&` from a const lvalue tuple
 and `int&&` from an rvalue tuple. Both should remain `int&`. The forwarding
 rules in [Decomposition Pattern] provide this behavior directly, so users do
 not need to reconstruct it from a structured-binding name.
+
+## Placeholder Declarations
+
+R6 illustrated alternative projection with a generic visitor passed to
+`std::visit`. This revision defines a uniform dependence model for placeholder
+declaration patterns.
+
+An `optional<int>` has only one projectable state. We could treat its projected
+placeholder declaration like a local declaration whose initializer has a
+known type:
+
+```cpp
+void consume(std::optional<int>& source) {
+  match (source) {
+    case { auto value } => use(value);
+    case {}             => ;
+  }
+}
+```
+
+Under that approach, `value` would be deduced as `int`, and the case would
+remain non-dependent. Counting projectable states in `alternatives` would be
+sufficient to determine this, without considering preceding cases.
+
+The same argument could apply after earlier cases have covered some
+alternatives:
+
+```cpp
+void consume(std::variant<int, std::string>& source) {
+  match (source) {
+    case { int i }      => use(i);
+    case { auto value } => use(value);
+  }
+}
+```
+
+Only `string` remains for the second case, so we could argue that `value`
+should be non-dependent here as well. Counting the advertised projectable
+states would not give that answer. We would need usefulness analysis to
+determine dependence.
+
+We already use that analysis to determine which types instantiate the second
+case, so this is feasible. However, removing the first case would then change
+whether the second case is generic. Its name lookup and checking of discarded
+statements would depend on a preceding case, even though its own pattern and
+handler were unchanged.
+
+A generic lambda provides a simpler model:
+
+```cpp
+[](auto value) { use(value); }(42);
+```
+
+Its call operator is a template even though it is immediately called with one
+value of one known type. We follow that model for placeholder declaration
+patterns. Their form introduces dependence, independently of the number of
+projectable states or the coverage of earlier cases. Usefulness determines
+which specializations are instantiated, not whether the definition is generic.
+
+We also considered allowing local deduction for named projections, since a
+named selector identifies one state. For `optional<int>`, these spellings
+would then select the same payload but have different checking semantics:
+
+```cpp
+case { auto x }         => use(x); // generic
+case { .value: auto x } => use(x); // non-generic under that approach
+```
+
+Adding the explicit selector could make dependent `requires` expressions or
+discarded `if constexpr` branches ill-formed. We instead keep projected
+placeholders generic. Selectors narrow the states considered without changing
+the checking model.
+
+Keeping direct placeholders non-generic would similarly give `auto value` and
+`{ auto value }` different checking rules. Adding an `optional` wrapper could
+require changing a member template call from `value.get<int>()` to
+`value.template get<int>()`. We instead make all placeholder declaration
+patterns generic, including direct structured bindings.
+
+We also considered checking a direct generic case eagerly when its subject
+type is known, even if an earlier case covers it. This would give direct and
+projected placeholders different instantiation requirements. We instead apply
+the same usefulness rule to both, as described in [Case-Local Instantiation].
 
 ## Alternative Projection and Polymorphic Casts
 
