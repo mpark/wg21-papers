@@ -20,10 +20,10 @@ highlighting:
     Non-reference declarations admit same-type, base-class,
     and restricted pointer relationships; reference declarations require a
     reference-compatible subject.
-  - Integral and enumeration value patterns use the operand compatibility
+  - Arithmetic and enumeration value patterns use the operand compatibility
     rules of built-in three-way comparison and compare with built-in equality.
-    For example, `true` does not match an `int`, and an enumeration cannot be
-    matched by an integer label. Enumeration patterns do not invoke a
+    For example, `true` does not match an `int` or `double`, and an enumeration
+    cannot be matched by an integer label. Enumeration patterns do not invoke a
     user-defined `operator==`.
   - Predicate patterns use a parenthesized callee, suppressing
     argument-dependent lookup.
@@ -1322,68 +1322,82 @@ $expression-pattern$:
     $inclusive-or-expression$
 ```
 
-Value and predicate patterns have the same form. A value pattern tests for the
+Value and predicate patterns describe different matching behaviors for an
+expression pattern. A value pattern tests the current subject against the
 value `$E$`, while a predicate pattern invokes `$E$` on the current subject.
+Value matching has priority over predicate matching, and is reflected in
+the matching conditions below.
 
-The grammar leaves top-level `or` to [Or-pattern] and reserves `and` for a
-future extension and consistency.
+[The grammar leaves top-level `or` to [Or-pattern] and reserves `and` for a
+future extension and consistency.]{.note}
 
 The expression `$E$` is required to be a constant expression as specified in
 [expr.const], e.g. a literal, `constexpr` variable, enumerator, function, or
-`constexpr` function object.
+`constexpr` function object. Note that the invocation of a predicate is not
+required to be a constant expression.
 
-Matching proceeds as follows:
+Let `$S$` be the current subject. Matching is defined as follows:
 
-Let `$S$` be the current subject.
-
-1. If `$E$` is an advertised value of the current subject, test its state as
-   described in [Advertised Value States].
-2. Otherwise, if both `$S$` and `$E$` are of integral or enumeration types,
-   apply the operand compatibility rules of the built-in three-way comparison.
-   If those rules accept the operands, compare the converted operands with
-   built-in equality. Otherwise, the pattern is not viable.
-3. Otherwise, if `$S$ == $E$` is well-formed and contextually convertible to
-   `bool`, use that comparison.
+1. Let `$AT$` denote the `std::alternative_traits` specialization for `$S$`.
+   If `$AT$` is a complete type with a member named `alternatives` and
+   `$AT$::alternatives[I].info` reflects a constant with the same canonical
+   type and value as `$E$` for one or more `I`s, the value pattern matches
+   if `$AT$::index($S$)` identifies any of those states. See [Advertised Values].
+2. Otherwise, if both `$E$` and `$S$` have arithmetic or enumeration type, use
+   the operand compatibility and conversion rules of built-in `<=>`
+   ([expr.spaceship]).
+   The pattern is not viable if these rules reject the operands. If they accept
+   the operands, compare the converted operands using built-in equality.
+   See [Built-in Value Comparisons].
+3. Otherwise, if `$E$ == $S$` is well-formed and contextually convertible to
+   `bool`, use that comparison. The pattern matches if the comparison result
+   contextually converted to `bool` is `true`.
 4. Otherwise, if the *call-expression* `($E$)($S$)` is well-formed and
-   contextually convertible to `bool`, invoke `$E$` as a predicate.
-   The parenthesized `($E$)` intentionally suppresses argument-dependent lookup.
+   contextually convertible to `bool`, invoke `$E$` as a predicate. The pattern
+   matches if the invocation result contextually converted to `bool` is `true`.
+
+   [The parenthesized `($E$)` is intentional, to suppress
+   argument-dependent lookup.]{.note}
 5. Otherwise, the pattern is not viable.
 
-Equality has priority over invocation, so a constant that can be compared with
-the subject remains a value pattern even if it's also callable.
-
-The second step uses the operand compatibility and conversion rules of built-in
-`<=>`. It does not actually evaluate `<=>` or consider a user-defined overload.
-One practical difference is that this rule prevents a `bool` value from
-matching other integral values. It also prevents comparisons that would involve
-narrowing conversions, which is also a safer option.
-
-Enumeration values are compared using built-in equality rather than an
-overloaded `operator==`, consistently with `switch`. Unlike `switch` however,
-an integer value pattern such as `case 1` cannot match against an `enum` subject.
-The pattern must explicitly be a value of the enumeration type.
-
-Here, `"--help"` is compared with `option` using `operator==`, while
-`starts_with("-I")` produces a predicate:
+In the following example, `0` is compared with `value`, while `is_even` is
+invoked as a predicate with `value` as the argument:
 
 ```cpp
-constexpr auto starts_with(std::string_view prefix) {
-  return [prefix](std::string_view text) {
-    return text.starts_with(prefix);
-  };
-}
+bool is_even(int value) { return value % 2 == 0; }
 
-std::string_view classify(std::string_view option) {
-  return match (option) -> std::string_view {
-    case "--help" => "help";
-    case starts_with("-I") => "include path";
-    case _ => "other";
+std::string_view classify(int value) {
+  return match (value) -> std::string_view {
+    case 0       => "zero";
+    case is_even => "even";
+    case _       => "odd";
   };
 }
 ```
 
-For a `variant<bool, int>`, `true` and `false` match only the `bool`
-alternative. Neither pattern matches the `int` alternative:
+Predicate patterns are useful with classification APIs such as reflection:
+
+```cpp
+consteval std::string_view classify(std::meta::info entity) {
+  return match (entity) -> std::string_view {
+    case std::meta::is_type => "type";
+    case std::meta::is_variable => "variable";
+    case std::meta::is_function => "function";
+    case _ => "other";
+  };
+}
+
+static_assert(classify(^^int) == "type");
+```
+
+### Built-in Value Comparisons
+
+These rules prevent a `bool` value from matching other arithmetic types, require
+enumeration operands to have the same enumeration type, and reject narrowing
+conversions other than integral-to-floating conversions.
+
+For example, given a `variant<bool, int>`, the patterns `{ true }` and
+`{ false }` match only the `bool` alternative:
 
 ```cpp
 using V = std::variant<bool, int>;
@@ -1397,7 +1411,8 @@ int classify(const V& v) {
 }
 ```
 
-An overloaded `operator==` is not used by enumeration value patterns:
+Enumeration values are compared using built-in equality rather than `==`,
+consistent with `switch`:
 
 ```cpp
 enum Mode { Read, Write };
@@ -1421,50 +1436,19 @@ match (mode) {
 }
 ```
 
-Predicate patterns are particularly useful with classification APIs such as
-reflection:
+### Advertised Values
 
-```cpp
-consteval std::string_view classify(std::meta::info entity) {
-  return match (entity) -> std::string_view {
-    case std::meta::is_type => "type";
-    case std::meta::is_variable => "variable";
-    case std::meta::is_function => "function";
-    case _ => "other";
-  };
-}
+`bool` and enumeration types have built-in advertised values. For `bool`,
+these are `true` and `false`. For an enumeration type, they are its distinct
+enumerator values. `std::alternative_traits` allows a user-defined type to
+advertise values in the same way.
 
-static_assert(classify(^^int) == "type");
-```
-
-Only the pattern expression is required to be constant, not the predicate
-invocation. The coverage rules are described in
-[Viability, Exhaustiveness, and Usefulness].
-
-The use of normal expressions for value and predicate patterns is discussed
-in [Wildcard and Value Patterns].
-
-### Advertised Value States
-
-A type can advertise constant values as labels for its states through
-`std::alternative_traits`. Matching such a label tests the active state rather
-than comparing the subject with the label.
-
-Let `$AT$` denote
-`std::alternative_traits<std::remove_cvref_t<decltype($S$)>>`. If `$AT$` is a
-complete type with a member named `alternatives`, a reflected constant in
-`alternatives[I]` labels state `I`. `$AT$::index($S$)` determines whether that
-state is active. A value pattern selects the state when its constant has the
-same canonical type and value as the advertised constant. The advertised
-constant is not compared with the subject or the discriminator, and matching
-it does not invoke `operator==`.
-If several states advertise the same canonical value, the pattern selects
-any of those states.
+Matching an advertised value tests the active state rather than comparing the
+subject with the value.
 
 When the specialization does not advertise `$E$`, matching continues with the
-remaining steps above. This includes open specializations, which advertise no
-value states. For example, `case 0` still asks whether an engaged
-`optional<int>` contains zero.
+remaining steps above. For example, `case 0` matching a subject `opt` of type
+`optional<int>` still goes to step 3 and performs `0 == opt`.
 
 The proposed `alternative_traits` specialization for `std::partial_ordering`
 advertises its four values, making this `match` exhaustive without a wildcard.
@@ -1482,7 +1466,9 @@ std::string_view describe(std::partial_ordering order) {
 }
 ```
 
-See [Advertised Values] for how a specialization advertises these labels.
+The coverage rules are described in [Viability, Exhaustiveness, and Usefulness],
+and the choice of expressions as patterns is discussed in
+[Wildcard and Value Patterns].
 
 ## Declaration Pattern
 
@@ -2157,10 +2143,10 @@ dereferencing the pointer.
 
 In the pointer and `optional` models, the value patterns `nullptr` and `nullopt`
 select the same states as `{}`, respectively. Their state selection follows
-[Advertised Value States].
+[Advertised Values].
 
 A value-selected state is non-projectable but need not be empty. For example,
-the connection states in [Advertised Values] have constant labels but
+the connection states in [States and Projections] have constant labels but
 are not selected by `{}`.
 
 `expected<T, E>` is modeled as value/error, not value/empty. Both states are
@@ -2292,6 +2278,9 @@ describes state `I`. Its `info` is one of:
 - a reflected type, for a projectable state; or
 - a reflected constant value, for a state with a value label.
 
+The `alternative_info` constructor canonicalizes the reflected constant's type
+and value. [Advertised Values] describes how a value pattern uses that label.
+
 A state is projectable if and only if its `info` reflects a type, including
 `void`. It requires a compatible projection and must have `empty == false`.
 States with null `info` and value-selected states are not projectable, even if
@@ -2308,26 +2297,6 @@ The remaining members have the following contracts:
 - `has_residual_states` states whether runtime states can exist outside the
   advertised set. [Required and Residual Domains] describes their role in
   checking a match.
-
-### Named State Values
-
-The type returned by `index(subject)` can expose constant state values for the
-named selectors described in [Selectors]. The `my::Result` specialization above
-exposes `state::value` and `state::error`. A class discriminator can instead
-provide member constants or variable templates, as in the `variant`
-specialization below.
-
-These names denote values of the same discriminator, rather than a separate
-set of state identifiers. A type that wants synonyms defines names for the
-same value. [Required and Residual Domains] describes how aliases affect
-coverage.
-
-### Advertised Values
-
-An element can advertise a constant as the source-level label for its state.
-The `alternative_info` constructor canonicalizes the reflected constant's type
-and value. [Advertised Value States] describes how a value pattern uses that
-label.
 
 A connection can expose a closed domain without making the connection itself
 comparable with its state labels:
@@ -2372,6 +2341,19 @@ void monitor(const my::Connection& connection) {
 
 No `get` operation is provided because these states are value-selected and
 non-projectable.
+
+### Named State Values
+
+The type returned by `index(subject)` can expose constant state values for the
+named selectors described in [Selectors]. The `my::Result` specialization above
+exposes `state::value` and `state::error`. A class discriminator can instead
+provide member constants or variable templates, as in the `variant`
+specialization below.
+
+These names denote values of the same discriminator, rather than a separate
+set of state identifiers. A type that wants synonyms defines names for the
+same value. [Required and Residual Domains] describes how aliases affect
+coverage.
 
 ## Open Protocol
 
@@ -3578,9 +3560,9 @@ bare identifier introduce a name. Expressions and declarations keep their
 normal C++ meaning.
 
 Expression patterns also provide a constrained predicate facility. Advertised
-states and structural integral or enumeration values are handled first. For
-other values, we try equality before invoking the pattern. This ordering matters
-because generic call operators are frequently unconstrained: an invocation
+states and structural arithmetic or enumeration values are handled first. For
+other values, we try `$E$ == $S$` before invoking the pattern. This ordering
+matters because generic call operators are frequently unconstrained: an invocation
 expression can appear well-formed even when instantiating its body would fail.
 It also ensures that adding callability to an equality-comparable value does not
 change the meaning of existing patterns.
